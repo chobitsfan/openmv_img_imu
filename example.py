@@ -24,7 +24,7 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
         if not cam.has_channel("frame") or not status.get("frame"):
             continue
 
-        w, h, img_ts = cam._channel_shape(cam.get_channel(name="frame"))
+        h, w, img_ts = cam._channel_shape(cam.get_channel(name="frame"))
 
         data = cam.channel_read("frame")
 
@@ -36,10 +36,10 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
         img.header.frame_id = "body"
         img.header.stamp.sec = img_ts // 1000000
         img.header.stamp.nanosec = (img_ts % 1000000) * 1000
-        img.width = 640
-        img.height = 400
+        img.width = w
+        img.height = h
         img.is_bigendian = 0
         img.encoding = "mono8"
-        img.step = 640
+        img.step = w
         img.data = data
         img_pub.publish(img)
