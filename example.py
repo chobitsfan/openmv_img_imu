@@ -31,6 +31,7 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
         # ts2 = time.monotonic_ns()
         # print((ts2 - ts)//1000000, 'ms', img_ts)
         # ts = ts2
+        print(cam.read_stdout())
 
         img = Image()
         img.header.frame_id = "body"

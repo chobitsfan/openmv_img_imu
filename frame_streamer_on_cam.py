@@ -16,27 +16,44 @@ FIFO_STATUS1 = 0x3A  # FIFO status 1 (number of unread words LSB)
 FIFO_STATUS2 = 0x3B  # FIFO status 2 (number of unread words MSB + flags)
 FIFO_DATA_OUT_L = 0x3E  # FIFO data output LSB
 FIFO_DATA_OUT_H = 0x3F  # FIFO data output MSB
+WAKE_UP_EN = 0x58  # Wake up enable / High-res timer register
+
+# 0. PERFORM SOFTWARE RESET
+# SW_RESET (bit 0) = 1 -> 0x01
+imu.__write_reg(CTRL3_C, 0x01)
+
+# Wait for the sensor to complete its internal boot procedure
+# (The datasheet states boot time is typically around 15ms)
+time.sleep_ms(30)
 
 # 1. Enable Block Data Update (BDU) and Auto-increment (IF_INC)
-# BDU (bit 6) = 1, IF_INC (bit 2) = 1 -> 0x44
 imu.__write_reg(CTRL3_C, 0x44)
-
-# 4. Set FIFO decimation: No decimation for Accel and Gyro
-# DEC_FIFO_GYRO = 001, DEC_FIFO_XL = 001 -> 0x09
-imu.__write_reg(FIFO_CTRL3, 0x09)
-
-# 5. Set FIFO ODR to 52Hz and mode to Continuous
-# ODR_FIFO = 0011 (52Hz), FIFO_MODE = 110 (Continuous) -> 0x1e
-# Continuous Mode: If the FIFO is full, new samples overwrite the oldest.
-imu.__write_reg(FIFO_CTRL5, 0x1e)
 
 # 2. Enable the Hardware Timestamp Timer
 # TIMER_EN (bit 5) = 1 -> 0x20
 imu.__write_reg(CTRL10_C, 0x20)
 
-# 5. Enable Timestamp routing to the FIFO
-# TIMER_PEDO_FIFO_EN (bit 7) = 1, TIMER_PEDO_FIFO_DRDY (bit 6) = 0 (Internal trigger)
+# 3. Enable High-Resolution Timer (25 us / LSB)
+# TIMER_HR (bit 5) = 1 -> 0x20
+imu.__write_reg(WAKE_UP_EN, 0x20)
+
+# 4. Set Accelerometer ODR to 52Hz, +/- 2g scale
+imu.__write_reg(CTRL1_XL, 0x30)
+
+# 5. Set Gyroscope ODR to 52Hz, +/- 250 dps scale
+imu.__write_reg(CTRL2_G, 0x30)
+
+# 6. Enable Timestamp routing to the FIFO (Internal trigger)
 imu.__write_reg(FIFO_CTRL2, 0x80)
+
+# 7. Set FIFO decimation: No decimation for Accel and Gyro (Datasets 1 & 2)
+imu.__write_reg(FIFO_CTRL3, 0x09)
+
+# 8. Set FIFO decimation: No decimation for Timestamp (Dataset 4)
+imu.__write_reg(FIFO_CTRL4, 0x08)
+
+# 9. Set FIFO ODR to 52Hz and mode to Continuous
+imu.__write_reg(FIFO_CTRL5, 0x1E)
 
 csi0 = csi.CSI()
 csi0.reset()
@@ -136,9 +153,10 @@ class FrameChannel:
 protocol.register(name="frame", backend=FrameChannel())
 
 while True:
-    imu_data = read_fifo_continuous_with_timestamp()
-    if len(imu_data) > 0:
-        print(len(imu_data))
+    imu_samples = read_fifo_continuous_with_timestamp()
+    for imu_sample in imu_samples:
+        gx, gy, gz, ax, ay, az, ts_raw = imu_sample
+        print(ts_raw * 0.025)
     if not frame_ready:
         img = csi0.snapshot()
         img_ts = time.ticks_us()
