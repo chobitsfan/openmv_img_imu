@@ -16,7 +16,7 @@ FIFO_STATUS1 = 0x3A  # FIFO status 1 (number of unread words LSB)
 FIFO_STATUS2 = 0x3B  # FIFO status 2 (number of unread words MSB + flags)
 FIFO_DATA_OUT_L = 0x3E  # FIFO data output LSB
 FIFO_DATA_OUT_H = 0x3F  # FIFO data output MSB
-WAKE_UP_EN = 0x58  # Wake up enable / High-res timer register
+WAKE_UP_DUR = 0x5C  # Wake up duration / High-res timer
 
 # 0. PERFORM SOFTWARE RESET
 # SW_RESET (bit 0) = 1 -> 0x01
@@ -29,21 +29,21 @@ time.sleep_ms(30)
 # 1. Enable Block Data Update (BDU) and Auto-increment (IF_INC)
 imu.__write_reg(CTRL3_C, 0x44)
 
-# 2. Enable the Hardware Timestamp Timer
-# TIMER_EN (bit 5) = 1 -> 0x20
-imu.__write_reg(CTRL10_C, 0x20)
+# 2. Enable the Hardware Timestamp Timer AND the Embedded Digital Block
+# TIMER_EN (bit 5) = 1, FUNC_EN (bit 2) = 1 -> 0x24
+imu.__write_reg(CTRL10_C, 0x24)
 
 # 3. Enable High-Resolution Timer (25 us / LSB)
-# TIMER_HR (bit 5) = 1 -> 0x20
-imu.__write_reg(WAKE_UP_EN, 0x20)
+# TIMER_HR (bit 5) = 1 in WAKE_UP_DUR register -> 0x10
+imu.__write_reg(WAKE_UP_DUR, 0x10)
 
-# 4. Set Accelerometer ODR to 52Hz, +/- 2g scale
-imu.__write_reg(CTRL1_XL, 0x30)
+# 4. Set Accelerometer ODR to 52Hz, 8g
+imu.__write_reg(CTRL1_XL, 0x5c)
 
-# 5. Set Gyroscope ODR to 52Hz, +/- 250 dps scale
-imu.__write_reg(CTRL2_G, 0x30)
+# 5. Set Gyroscope ODR to 208Hz, 2000dps
+imu.__write_reg(CTRL2_G, 0x5c)
 
-# 6. Enable Timestamp routing to the FIFO (Internal trigger)
+# 6. Enable Timestamp routing to the FIFO at every Data-Ready (DRDY)
 imu.__write_reg(FIFO_CTRL2, 0x80)
 
 # 7. Set FIFO decimation: No decimation for Accel and Gyro (Datasets 1 & 2)
@@ -52,8 +52,8 @@ imu.__write_reg(FIFO_CTRL3, 0x09)
 # 8. Set FIFO decimation: No decimation for Timestamp (Dataset 4)
 imu.__write_reg(FIFO_CTRL4, 0x08)
 
-# 9. Set FIFO ODR to 52Hz and mode to Continuous
-imu.__write_reg(FIFO_CTRL5, 0x1E)
+# 9. Set FIFO ODR to 208Hz and mode to Continuous
+imu.__write_reg(FIFO_CTRL5, 0x2E)
 
 csi0 = csi.CSI()
 csi0.reset()
@@ -117,14 +117,11 @@ def read_fifo_continuous_with_timestamp():
         az = read_fifo_word()
 
         # 3. Read Timestamp Dataset (3 words)
-        ts_word0 = read_fifo_word_unsigned()
-        ts_word1 = read_fifo_word_unsigned()
-        read_fifo_word_unsigned()  # Must be read to clear the FIFO slot
+        ts_word0 = read_fifo_word_unsigned()  # timestamp[23:8]
+        ts_word1 = read_fifo_word_unsigned()  # high byte = timestamp[7:0]
+        _ = read_fifo_word_unsigned()  # 3rd word = step counter (unused)
 
-        # The LSM6DSM 24-bit timestamp maps across the first two words:
-        # Word 0: Timestamp bits [15:0]
-        # Word 1: Timestamp bits [23:16] in the lower byte (bits [7:0])
-        timestamp_24bit = ts_word0 | ((ts_word1 & 0x00FF) << 16)
+        timestamp_24bit = ((ts_word0 << 8) | (ts_word1 >> 8)) & 0xFFFFFF
 
         data.append((gx, gy, gz, ax, ay, az, timestamp_24bit))
 
@@ -152,11 +149,13 @@ class FrameChannel:
 
 protocol.register(name="frame", backend=FrameChannel())
 
+prv_ts_raw = 0
 while True:
     imu_samples = read_fifo_continuous_with_timestamp()
     for imu_sample in imu_samples:
         gx, gy, gz, ax, ay, az, ts_raw = imu_sample
-        print(ts_raw * 0.025)
+        print(ax, ay, az, (ts_raw - prv_ts_raw)*0.025)
+        prv_ts_raw = ts_raw
     if not frame_ready:
         img = csi0.snapshot()
         img_ts = time.ticks_us()
