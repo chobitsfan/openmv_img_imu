@@ -2,6 +2,7 @@ import csi
 import protocol
 import time
 import imu
+import struct
 
 # --- LSM6DSM Register Addresses ---
 CTRL1_XL = 0x10  # Accel control register
@@ -65,6 +66,9 @@ img = csi0.snapshot()
 img_mv = memoryview(img.bytearray())
 frame_ready = True
 
+imu_ready = False
+imu_samples = []
+
 start_ts = time.ticks_us()
 img_ts = time.ticks_us()
 
@@ -123,7 +127,7 @@ def read_fifo_continuous_with_timestamp():
 
         timestamp_24bit = ((ts_word0 << 8) | (ts_word1 >> 8)) & 0xFFFFFF
 
-        data.append((gx, gy, gz, ax, ay, az, timestamp_24bit))
+        data.extend((gx, gy, gz, ax, ay, az, timestamp_24bit))
 
     return data
 
@@ -147,15 +151,31 @@ class FrameChannel:
         return chunk
 
 
-protocol.register(name="frame", backend=FrameChannel())
+class ImuChannel:
+    def size(self):
+        return len(imu_samples)*4
 
-prv_ts_raw = 0
+    def poll(self):
+        return imu_ready
+
+    def readp(self, offset, size):
+        global imu_ready
+        imu_ready = False
+        return struct.pack(f'{len(imu_samples)}i', *imu_samples)
+
+
+protocol.register(name="frame", backend=FrameChannel())
+protocol.register(name="imu", backend=ImuChannel())
+
+
+# prv_ts_raw = 0
 while True:
     imu_samples = read_fifo_continuous_with_timestamp()
-    for imu_sample in imu_samples:
-        gx, gy, gz, ax, ay, az, ts_raw = imu_sample
-        print(ax, ay, az, (ts_raw - prv_ts_raw)*0.025)
-        prv_ts_raw = ts_raw
+    imu_ready = bool(imu_samples)
+#    for imu_sample in imu_samples:
+#        gx, gy, gz, ax, ay, az, ts_raw = imu_sample
+#        print(ax, ay, az, (ts_raw - prv_ts_raw)*0.025)
+#        prv_ts_raw = ts_raw
     if not frame_ready:
         img = csi0.snapshot()
         img_ts = time.ticks_us()
