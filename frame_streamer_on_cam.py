@@ -67,6 +67,9 @@ def read_fifo_continuous_with_timestamp():
     status1 = imu.__read_reg(FIFO_STATUS1)
     status2 = imu.__read_reg(FIFO_STATUS2)
 
+    if status2 & 0x40:
+        print("FIFO overrun occurred!")
+
     # DIFF_FIFO is an 11-bit value representing unread 16-bit words
     unread_words = status1 | ((status2 & 0x07) << 8)
 
@@ -76,7 +79,7 @@ def read_fifo_continuous_with_timestamp():
     # - 3 words (6 bytes) for the Timestamp dataset
     sample_sets = unread_words // 9
 
-    data = []
+    data = bytearray()
     for _ in range(sample_sets):
         # 1. Read Gyroscope
         gx = read_fifo_word()
@@ -95,7 +98,7 @@ def read_fifo_continuous_with_timestamp():
 
         timestamp_24bit = ((ts_word0 << 8) | (ts_word1 >> 8)) & 0xFFFFFF
 
-        data.extend((gx, gy, gz, ax, ay, az, timestamp_24bit - imu_start_ts))
+        data += struct.pack('hhhhhhi', gx, gy, gz, ax, ay, az, timestamp_24bit - imu_start_ts)
 
     return data
 
@@ -121,7 +124,7 @@ class FrameChannel:
 
 class ImuChannel:
     def size(self):
-        return len(imu_samples)*4
+        return len(imu_samples)
 
     def poll(self):
         return imu_ready
@@ -129,7 +132,9 @@ class ImuChannel:
     def readp(self, offset, size):
         global imu_ready
         imu_ready = False
-        return struct.pack(f'{len(imu_samples)}i', *imu_samples)
+        if size < len(imu_samples):
+            print("buf too small")
+        return imu_samples
 
 
 # 0. PERFORM SOFTWARE RESET
@@ -175,14 +180,14 @@ csi0 = csi.CSI()
 csi0.reset()
 csi0.pixformat(csi.GRAYSCALE)
 csi0.framesize(csi.VGA)
-# csi0.framerate(20)
+csi0.framerate(20)
 
 img = csi0.snapshot()
-img_mv = memoryview(img.bytearray())
+img_mv = memoryview(img)
 frame_ready = False
 
 imu_ready = False
-imu_samples = []
+imu_samples = bytearray()
 
 start_ts = time.ticks_us()
 imu_start_ts = read_current_timestamp()
@@ -190,6 +195,8 @@ img_ts = time.ticks_us()
 
 protocol.register(name="frame", backend=FrameChannel())
 protocol.register(name="imu", backend=ImuChannel())
+
+print("ok")
 
 # prv_ts_raw = 0
 while True:
@@ -203,5 +210,5 @@ while True:
     if not frame_ready and csi0.readable():
         img = csi0.snapshot()
         img_ts = time.ticks_us()
-        img_mv = memoryview(img.bytearray())
+        img_mv = memoryview(img)
         frame_ready = True
