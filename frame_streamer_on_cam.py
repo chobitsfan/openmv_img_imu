@@ -95,7 +95,7 @@ def read_fifo_continuous_with_timestamp():
 
         timestamp_24bit = ((ts_word0 << 8) | (ts_word1 >> 8)) & 0xFFFFFF
 
-        data.extend((gx, gy, gz, ax, ay, az, timestamp_24bit))
+        data.extend((gx, gy, gz, ax, ay, az, timestamp_24bit - imu_start_ts))
 
     return data
 
@@ -130,6 +130,7 @@ class ImuChannel:
         global imu_ready
         imu_ready = False
         return struct.pack(f'{len(imu_samples)}i', *imu_samples)
+
 
 # 0. PERFORM SOFTWARE RESET
 # SW_RESET (bit 0) = 1 -> 0x01
@@ -174,11 +175,11 @@ csi0 = csi.CSI()
 csi0.reset()
 csi0.pixformat(csi.GRAYSCALE)
 csi0.framesize(csi.VGA)
-csi0.framerate(20)
+# csi0.framerate(20)
 
 img = csi0.snapshot()
 img_mv = memoryview(img.bytearray())
-frame_ready = True
+frame_ready = False
 
 imu_ready = False
 imu_samples = []
@@ -192,13 +193,14 @@ protocol.register(name="imu", backend=ImuChannel())
 
 # prv_ts_raw = 0
 while True:
-    imu_samples = read_fifo_continuous_with_timestamp()
-    imu_ready = bool(imu_samples)
+    if not imu_ready:
+        imu_samples = read_fifo_continuous_with_timestamp()
+        imu_ready = bool(imu_samples)
 #    for imu_sample in imu_samples:
 #        gx, gy, gz, ax, ay, az, ts_raw = imu_sample
 #        print(ax, ay, az, (ts_raw - prv_ts_raw)*0.025)
 #        prv_ts_raw = ts_raw
-    if not frame_ready:
+    if not frame_ready and csi0.readable():
         img = csi0.snapshot()
         img_ts = time.ticks_us()
         img_mv = memoryview(img.bytearray())
