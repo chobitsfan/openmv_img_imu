@@ -26,8 +26,8 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
     cam.exec(SCRIPT)
     cam.streaming(False)
     print("ok")
-    pi_ts = time.monotonic_ns()
-    prv_imu_ts = 0
+    # pi_ts = time.monotonic_ns()
+    # prv_imu_ts = 0
 
     while True:
         if text := cam.read_stdout():
@@ -36,15 +36,21 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
         if status.get("imu"):
             data = cam.channel_read("imu")
             # count = len(data) // 4
-            # print("imu", len(data))
+            # print("rcv", len(data))
+            tss = []
             imu_samples = list(struct.iter_unpack('hhhhhhi', data))
-            # print(len(imu_samples))
+            # print('unpack', len(imu_samples))
+            # i = 0
+            # ts_diff = []
             for gx, gy, gz, ax, ay, az, ts in imu_samples:
                 # print(gx*GYR_LSB_DPS, gy*GYR_LSB_DPS, gz*GYR_LSB_DPS, ax*ACC_LSB_G, ay*ACC_LSB_G, az*ACC_LSB_G, ts*0.025)
                 # print(ts-prv_imu_ts)
                 # if ts - prv_imu_ts > 200:
-                #   print("imu ts gap", (ts - prv_imu_ts)*25//1000, "ms")
-                prv_imu_ts = ts
+                #    print("imu ts gap", (ts - prv_imu_ts)*25//1000, "ms", prv_imu_ts, ts)
+                # ts_diff.append(ts-prv_imu_ts)
+                # prv_imu_ts = ts
+                # i += 1
+                tss.append(ts)
                 imu = Imu()
                 imu.header.frame_id = "body"
                 imu.header.stamp.sec = ts*25 // 1_000_000
@@ -56,6 +62,7 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
                 imu.angular_velocity.y = gy*GYR_LSB_DPS*math.pi/180
                 imu.angular_velocity.z = gz*GYR_LSB_DPS*math.pi/180
                 imu_pub.publish(imu)
+            print(tss)
 
         if status.get("frame"):
         # if False:

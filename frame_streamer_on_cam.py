@@ -79,6 +79,7 @@ def read_fifo_continuous_with_timestamp():
     # - 3 words (6 bytes) for the Timestamp dataset
     sample_sets = unread_words // 9
 
+    # prv_ts = 0
     data = bytearray()
     for _ in range(sample_sets):
         # 1. Read Gyroscope
@@ -97,8 +98,11 @@ def read_fifo_continuous_with_timestamp():
         _ = read_fifo_word_unsigned()  # 3rd word = step counter (unused)
 
         timestamp_24bit = ((ts_word0 << 8) | (ts_word1 >> 8)) & 0xFFFFFF
+        # if prv_ts > 0 and timestamp_24bit - prv_ts > 200:
+        #    print("ts gap", timestamp_24bit - prv_ts)
+        # prv_ts = timestamp_24bit
 
-        data += struct.pack('hhhhhhi', gx, gy, gz, ax, ay, az, timestamp_24bit - imu_start_ts)
+        data += struct.pack('hhhhhhi', gx, gy, gz, ax, ay, az, timestamp_24bit)
 
     return data
 
@@ -129,11 +133,11 @@ class ImuChannel:
     def poll(self):
         return imu_ready
 
-    def readp(self, offset, size):
+    def read(self, offset, size):
         global imu_ready
         imu_ready = False
-        if size < len(imu_samples):
-            print("buf too small")
+        # if size < len(imu_samples):
+        #    print("buf too small")
         return imu_samples
 
 
@@ -155,8 +159,6 @@ imu.__write_reg(WAKE_UP_DUR, 0x10)
 # 3. Enable the Hardware Timestamp Timer AND the Embedded Digital Block
 # TIMER_EN (bit 5) = 1, FUNC_EN (bit 2) = 1 -> 0x24
 imu.__write_reg(CTRL10_C, 0x24)
-# reset timestamp count
-# imu.__write_reg(TIMESTAMP2_REG, 0xaa)
 
 # 4. Set Accelerometer ODR to 208Hz, 8g
 imu.__write_reg(CTRL1_XL, 0x5c)
@@ -196,12 +198,18 @@ img_ts = time.ticks_us()
 protocol.register(name="frame", backend=FrameChannel())
 protocol.register(name="imu", backend=ImuChannel())
 
-print("ok")
+# reset timestamp count
+imu.__write_reg(TIMESTAMP2_REG, 0xaa)
+# bypass (FIFO_MODE=000) empties the FIFO and resets its pointers
+imu.__write_reg(FIFO_CTRL5, 0x00)
+time.sleep_ms(5)
+imu.__write_reg(FIFO_CTRL5, 0x2E)
 
 # prv_ts_raw = 0
 while True:
     if not imu_ready:
         imu_samples = read_fifo_continuous_with_timestamp()
+        # print(len(imu_samples))
         imu_ready = bool(imu_samples)
 #    for imu_sample in imu_samples:
 #        gx, gy, gz, ax, ay, az, ts_raw = imu_sample
