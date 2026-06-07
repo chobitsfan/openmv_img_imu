@@ -83,19 +83,16 @@ def read_fifo_continuous_with_timestamp():
     data = bytearray()
     for _ in range(sample_sets):
         # 1. Read Gyroscope
-        gx = read_fifo_word()
-        gy = read_fifo_word()
-        gz = read_fifo_word()
+        gd = imu.__read_reg_burst(0x3E, 6)
+        gx, gy, gz = struct.unpack('<hhh', gd)
 
         # 2. Read Accelerometer
-        ax = read_fifo_word()
-        ay = read_fifo_word()
-        az = read_fifo_word()
+        ad = imu.__read_reg_burst(0x3E, 6)
+        ax, ay, az = struct.unpack('<hhh', ad)
 
         # 3. Read Timestamp Dataset (3 words)
-        ts_word0 = read_fifo_word_unsigned()  # timestamp[23:8]
-        ts_word1 = read_fifo_word_unsigned()  # high byte = timestamp[7:0]
-        _ = read_fifo_word_unsigned()  # 3rd word = step counter (unused)
+        td = imu.__read_reg_burst(0x3E, 6)
+        ts_word0, ts_word1, _ = struct.unpack('<HHH', td)
 
         timestamp_24bit = ((ts_word0 << 8) | (ts_word1 >> 8)) & 0xFFFFFF
         # if prv_ts > 0 and timestamp_24bit - prv_ts > 200:
