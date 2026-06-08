@@ -179,7 +179,8 @@ csi0 = csi.CSI()
 csi0.reset()
 csi0.pixformat(csi.GRAYSCALE)
 csi0.framesize(csi.VGA)
-csi0.framerate(20)
+# csi0.framerate(20)
+csi0.ioctl(csi.IOCTL_SET_TRIGGERED_MODE, True)
 
 img = csi0.snapshot()
 img_mv = memoryview(img)
@@ -189,7 +190,7 @@ imu_ready = False
 imu_samples = bytearray()
 
 start_ts = time.ticks_us()
-imu_start_ts = read_current_timestamp()
+# imu_start_ts = read_current_timestamp()
 img_ts = time.ticks_us()
 
 protocol.register(name="frame", backend=FrameChannel())
@@ -212,8 +213,11 @@ while True:
 #        gx, gy, gz, ax, ay, az, ts_raw = imu_sample
 #        print(ax, ay, az, (ts_raw - prv_ts_raw)*0.025)
 #        prv_ts_raw = ts_raw
-    if not frame_ready and csi0.readable():
-        img = csi0.snapshot()
-        img_ts = time.ticks_us()
-        img_mv = memoryview(img)
-        frame_ready = True
+#    if not frame_ready and csi0.readable():
+    if not frame_ready:
+        now_ts = time.ticks_us()
+        if time.ticks_diff(now_ts, img_ts) > 49000:
+            img = csi0.snapshot()
+            img_ts = now_ts
+            img_mv = memoryview(img)
+            frame_ready = True
