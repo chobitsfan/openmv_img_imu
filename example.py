@@ -2,6 +2,8 @@ import time
 import rclpy
 import struct
 import math
+# import cv2
+# import numpy as np
 from openmv.camera import Camera
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSDurabilityPolicy
@@ -27,7 +29,8 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
     cam.streaming(False)
     print("ok")
     # pi_ts = time.monotonic_ns()
-    prv_imu_ts = 0
+    # prv_imu_ts = 0
+#    img_i = 0
 
     while True:
         if text := cam.read_stdout():
@@ -41,14 +44,14 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
             imu_samples = list(struct.iter_unpack('hhhhhhi', data))
             # print('unpack', len(imu_samples))
             # i = 0
-            ts_diff = []
+            # ts_diff = []
             for gx, gy, gz, ax, ay, az, ts in imu_samples:
-                print(gx*GYR_LSB_DPS, gy*GYR_LSB_DPS, gz*GYR_LSB_DPS, ax*ACC_LSB_G, ay*ACC_LSB_G, az*ACC_LSB_G, ts*0.025)
+                # print(gx*GYR_LSB_DPS, gy*GYR_LSB_DPS, gz*GYR_LSB_DPS, ax*ACC_LSB_G, ay*ACC_LSB_G, az*ACC_LSB_G, ts*0.025)
                 # print(ts-prv_imu_ts)
                 # if ts - prv_imu_ts > 200:
                 #    print("imu ts gap", (ts - prv_imu_ts)*25//1000, "ms", prv_imu_ts, ts)
                 # ts_diff.append(ts-prv_imu_ts)
-                prv_imu_ts = ts
+                # prv_imu_ts = ts
                 # i += 1
                 # tss.append(ts)
                 imu = Imu()
@@ -75,6 +78,15 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
             # pi_ts = pi_ts2
             # print(cam.read_stdout())
 
+#            cv_img = np.frombuffer(data, np.uint8).reshape(h, w)
+#            cv2.imshow("OpenMV", cv_img)
+#            k = cv2.waitKey(1)
+#            if k == ord("q"):
+#                break
+#            elif k == ord("s"):
+#                cv2.imwrite(f"openmv_{img_i}.png", cv_img)
+#                img_i += 1
+
             img = Image()
             img.header.frame_id = "body"
             img.header.stamp.sec = img_ts // 1000000
@@ -86,3 +98,5 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
             img.step = w
             img.data = data
             img_pub.publish(img)
+
+#    cv2.destroyAllWindows()
