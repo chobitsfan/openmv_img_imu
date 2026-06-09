@@ -12,6 +12,9 @@ from sensor_msgs.msg import Image, Imu
 ACC_LSB_G   = 0.244 / 1000        # +/-8 g   -> 0.244 mg/LSB
 GYR_LSB_DPS = 70.0 / 1000         # 2000 dps -> 70 mdps/LSB
 
+ACC_TO_MS = ACC_LSB_G * 9.80665
+GYRO_TO_RPS = GYR_LSB_DPS * math.pi / 180
+
 rclpy.init()
 node = rclpy.create_node('openmv')
 img_pub = node.create_publisher(Image, "mono", QoSProfile(depth=1, reliability=QoSReliabilityPolicy.BEST_EFFORT))
@@ -38,27 +41,25 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
         status = cam.read_status()
         if status.get("imu"):
             data = cam.channel_read("imu")
-            if len(data) % 18 > 0:
-                print("wrong imu samples len", len(data))
-                break
+            (imu_start_ts,) = cam._channel_shape(cam.get_channel(name="imu"))
             imu_samples = list(struct.iter_unpack('hhhhhhHHH', data))
             for gx, gy, gz, ax, ay, az, ts_word0, ts_word1, _ in imu_samples:
-                ts = ((ts_word0 << 8) | (ts_word1 >> 8)) & 0xFFFFFF
+                imu_ts = ((ts_word0 << 8) | (ts_word1 >> 8)) & 0xFFFFFF
                 # print(gx*GYR_LSB_DPS, gy*GYR_LSB_DPS, gz*GYR_LSB_DPS, ax*ACC_LSB_G, ay*ACC_LSB_G, az*ACC_LSB_G, ts*0.025)
-                if ts - prv_imu_ts > 200 or ts - prv_imu_ts < 180:
-                    print("imu ts gap", (ts - prv_imu_ts)*25//1000, "ms", prv_imu_ts, ts)
+                if imu_ts - prv_imu_ts > 200 or imu_ts - prv_imu_ts < 180:
+                    print("imu ts gap", (imu_ts - prv_imu_ts)*25//1000, "ms", prv_imu_ts, imu_ts)
                 # ts_diff.append(ts-prv_imu_ts)
-                prv_imu_ts = ts
+                prv_imu_ts = imu_ts
                 imu = Imu()
                 imu.header.frame_id = "body"
-                imu.header.stamp.sec = ts*25 // 1_000_000
-                imu.header.stamp.nanosec = (ts*25 % 1_000_000) * 1000
-                imu.linear_acceleration.x = ax*ACC_LSB_G*9.80665
-                imu.linear_acceleration.y = ay*ACC_LSB_G*9.80665
-                imu.linear_acceleration.z = az*ACC_LSB_G*9.80665
-                imu.angular_velocity.x = gx*GYR_LSB_DPS*math.pi/180
-                imu.angular_velocity.y = gy*GYR_LSB_DPS*math.pi/180
-                imu.angular_velocity.z = gz*GYR_LSB_DPS*math.pi/180
+                imu.header.stamp.sec = (imu_ts - imu_start_ts) *25 // 1_000_000
+                imu.header.stamp.nanosec = ((imu_ts - imu_start_ts) * 25 % 1_000_000) * 1000
+                imu.linear_acceleration.x = ax * ACC_TO_MS
+                imu.linear_acceleration.y = ay * ACC_TO_MS
+                imu.linear_acceleration.z = az * ACC_TO_MS
+                imu.angular_velocity.x = gx * GYRO_TO_RPS
+                imu.angular_velocity.y = gy * GYRO_TO_RPS
+                imu.angular_velocity.z = gz * GYRO_TO_RPS
                 imu_pub.publish(imu)
             # print(ts_diff)
 
@@ -70,7 +71,6 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
             # pi_ts2 = time.monotonic_ns()
             # print((pi_ts2 - pi_ts)//1000000, 'ms')
             # pi_ts = pi_ts2
-            # print(cam.read_stdout())
 
 #            cv_img = np.frombuffer(data, np.uint8).reshape(h, w)
 #            cv2.imshow("OpenMV", cv_img)

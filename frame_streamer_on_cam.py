@@ -29,16 +29,11 @@ def read_current_timestamp():
     """
     Reads the current 24-bit timestamp directly from the hardware registers.
     """
-    # Read the 3 bytes sequentially
-    ts0 = imu.__read_reg(TIMESTAMP0_REG)
-    ts1 = imu.__read_reg(TIMESTAMP1_REG)
-    ts2 = imu.__read_reg(TIMESTAMP2_REG)
+    data = bytearray(3)
+    imu.__read_reg_burst(TIMESTAMP0_REG, data)
 
     # Combine the 3 bytes into a single 24-bit integer
-    # ts0 is bits [7:0]
-    # ts1 is bits [15:8]
-    # ts2 is bits [23:16]
-    timestamp_24bit = ts0 | (ts1 << 8) | (ts2 << 16)
+    timestamp_24bit = data[0] | (data[1] << 8) | (data[2] << 16)
 
     return timestamp_24bit
 
@@ -86,14 +81,15 @@ class ImuChannel:
     def size(self):
         return len(imu_samples)
 
+    def shape(self):
+        return (imu_start_ts,)
+
     def poll(self):
         return imu_ready
 
     def read(self, offset, size):
         global imu_ready
         imu_ready = False
-        # if size < len(imu_samples):
-        #    print("buf too small")
         return imu_samples
 
 
@@ -154,12 +150,8 @@ img = csi0.snapshot()
 img_mv = memoryview(img)
 frame_ready = False
 
-imu_ready = False
 imu_samples = bytearray()
-
-start_ts = time.ticks_us()
-# imu_start_ts = read_current_timestamp()
-img_ts = time.ticks_us()
+imu_ready = False
 
 protocol.register(name="frame", backend=FrameChannel())
 protocol.register(name="imu", backend=ImuChannel())
@@ -171,12 +163,14 @@ imu.__write_reg(FIFO_CTRL5, 0x00)
 time.sleep_ms(5)
 imu.__write_reg(FIFO_CTRL5, 0x2E)
 
-# prv_ts_raw = 0
+start_ts = time.ticks_us()
+imu_start_ts = read_current_timestamp()
+img_ts = time.ticks_us()
+
 while True:
     if not imu_ready:
         imu_samples = read_fifo_continuous_with_timestamp()
         imu_ready = bool(imu_samples)
-#    if not frame_ready and csi0.readable():
     if not frame_ready:
         now_ts = time.ticks_us()
         if time.ticks_diff(now_ts, img_ts) > 49000:
