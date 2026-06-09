@@ -9,7 +9,9 @@ CTRL1_XL = 0x10  # Accel control register
 CTRL2_G = 0x11  # Gyro control register
 CTRL3_C = 0x12  # Control register 3
 CTRL10_C = 0x19  # Control register 10 (Timer enable)
-FIFO_CTRL2 = 0x07  # FIFO timer/pedo enable
+INT1_CTRL = 0x0D  # INT1 pad control
+FIFO_CTRL1 = 0x06  # FIFO watermark threshold FTH[7:0]
+FIFO_CTRL2 = 0x07  # FIFO timer/pedo enable + FTH[10:8]
 FIFO_CTRL3 = 0x08  # FIFO decimation for Accel/Gyro
 FIFO_CTRL4 = 0x09  # FIFO decimation for Dataset 3/4
 FIFO_CTRL5 = 0x0A  # FIFO ODR and Mode
@@ -150,7 +152,7 @@ time.sleep_ms(30)
 imu.__write_reg(CTRL3_C, 0x44)
 
 # 2. Timestamp resolution (25 us / LSB)
-# TIMER_HR (bit 5) = 1 in WAKE_UP_DUR register -> 0x10
+# TIMER_HR (bit 4) = 1 in WAKE_UP_DUR register -> 0x10
 imu.__write_reg(WAKE_UP_DUR, 0x10)
 
 # 3. Enable the Hardware Timestamp Timer AND the Embedded Digital Block
@@ -164,7 +166,16 @@ imu.__write_reg(CTRL1_XL, 0x5c)
 imu.__write_reg(CTRL2_G, 0x5c)
 
 # 6. Enable Timestamp routing to the FIFO at every Data-Ready (DRDY)
+#    FTH[10:8] = 0 (upper 3 bits of the 90-byte watermark, see FIFO_CTRL1)
 imu.__write_reg(FIFO_CTRL2, 0x80)
+
+# 6a. FIFO watermark = 90 bytes. FTH resolution is 1 LSB = 2 bytes (1 word),
+#     so 90 bytes -> FTH = 45 = 0x2D. WaterM/INT1_FTH asserts when unread >= 90 bytes.
+imu.__write_reg(FIFO_CTRL1, 0x2D)
+
+# 6b. Route the FIFO threshold (watermark) flag to the INT1 pin.
+#     INT1_FTH = bit 3 -> 0x08. INT1 is push-pull, active-high (CTRL3_C defaults).
+imu.__write_reg(INT1_CTRL, 0x08)
 
 # 7. Set FIFO decimation: No decimation for Accel and Gyro (Datasets 1 & 2)
 imu.__write_reg(FIFO_CTRL3, 0x09)
