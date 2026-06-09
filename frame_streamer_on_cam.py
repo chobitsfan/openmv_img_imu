@@ -43,65 +43,22 @@ def read_current_timestamp():
     return timestamp_24bit
 
 
-def read_fifo_word():
-    """
-    Reads a single 16-bit word from the FIFO data registers
-    and converts it to a signed integer.
-    """
-    low = imu.__read_reg(FIFO_DATA_OUT_L)
-    high = imu.__read_reg(FIFO_DATA_OUT_H)
-
-    # Combine into a 16-bit signed integer (Two's Complement)
-    val = (high << 8) | low
-    if val >= 32768:
-        val -= 65536
-    return val
-
-
-def read_fifo_word_unsigned():
-    """Reads a 16-bit word from the FIFO as an unsigned integer."""
-    low = imu.__read_reg(FIFO_DATA_OUT_L)
-    high = imu.__read_reg(FIFO_DATA_OUT_H)
-    return (high << 8) | low
-
-
 def read_fifo_continuous_with_timestamp():
-    status1 = imu.__read_reg(FIFO_STATUS1)
-    status2 = imu.__read_reg(FIFO_STATUS2)
+    status = bytearray(2)
+    imu.__read_reg_burst(FIFO_STATUS1, status)
 
-    if status2 & 0x40:
+    if status[1] & 0x40:
         print("FIFO overrun occurred!")
 
     # DIFF_FIFO is an 11-bit value representing unread 16-bit words
-    unread_words = status1 | ((status2 & 0x07) << 8)
+    unread_bytes = (status[0] | ((status[1] & 0x07) << 8)) * 2
 
-    # With Gyro, Accel, and Timestamp enabled, each complete sample set is 9 words long:
-    # - 3 words (6 bytes) for Gyro
-    # - 3 words (6 bytes) for Accel
-    # - 3 words (6 bytes) for the Timestamp dataset
-    sample_sets = unread_words // 9
-
-    # prv_ts = 0
-    data = bytearray()
-    for _ in range(sample_sets):
-        # 1. Read Gyroscope
-        gd = imu.__read_reg_burst(0x3E, 6)
-        gx, gy, gz = struct.unpack('<hhh', gd)
-
-        # 2. Read Accelerometer
-        ad = imu.__read_reg_burst(0x3E, 6)
-        ax, ay, az = struct.unpack('<hhh', ad)
-
-        # 3. Read Timestamp Dataset (3 words)
-        td = imu.__read_reg_burst(0x3E, 6)
-        ts_word0, ts_word1, _ = struct.unpack('<HHH', td)
-
-        timestamp_24bit = ((ts_word0 << 8) | (ts_word1 >> 8)) & 0xFFFFFF
-        # if prv_ts > 0 and timestamp_24bit - prv_ts > 200:
-        #    print("ts gap", timestamp_24bit - prv_ts)
-        # prv_ts = timestamp_24bit
-
-        data += struct.pack('hhhhhhi', gx, gy, gz, ax, ay, az, timestamp_24bit)
+    # occasionally, DIFF_FIFO is not a full acc+gyro+timestamp sample
+    to_read = (unread_bytes // 18) * 18
+    if to_read == 0:
+        return None
+    data = bytearray(to_read)
+    imu.__read_reg_burst(0x3E, data)
 
     return data
 
@@ -218,17 +175,12 @@ imu.__write_reg(FIFO_CTRL5, 0x2E)
 while True:
     if not imu_ready:
         imu_samples = read_fifo_continuous_with_timestamp()
-        # print(len(imu_samples))
         imu_ready = bool(imu_samples)
-#    for imu_sample in imu_samples:
-#        gx, gy, gz, ax, ay, az, ts_raw = imu_sample
-#        print(ax, ay, az, (ts_raw - prv_ts_raw)*0.025)
-#        prv_ts_raw = ts_raw
 #    if not frame_ready and csi0.readable():
     if not frame_ready:
         now_ts = time.ticks_us()
         if time.ticks_diff(now_ts, img_ts) > 49000:
-            img = csi0.snapshot()
+            csi0.snapshot(image=img)
             img_ts = now_ts
             img_mv = memoryview(img)
             frame_ready = True

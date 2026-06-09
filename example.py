@@ -29,7 +29,7 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
     cam.streaming(False)
     print("ok")
     # pi_ts = time.monotonic_ns()
-    # prv_imu_ts = 0
+    prv_imu_ts = 0
 #    img_i = 0
 
     while True:
@@ -38,22 +38,17 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
         status = cam.read_status()
         if status.get("imu"):
             data = cam.channel_read("imu")
-            # count = len(data) // 4
-            # print("rcv", len(data))
-            # tss = []
-            imu_samples = list(struct.iter_unpack('hhhhhhi', data))
-            # print('unpack', len(imu_samples))
-            # i = 0
-            # ts_diff = []
-            for gx, gy, gz, ax, ay, az, ts in imu_samples:
+            if len(data) % 18 > 0:
+                print("wrong imu samples len", len(data))
+                break
+            imu_samples = list(struct.iter_unpack('hhhhhhHHH', data))
+            for gx, gy, gz, ax, ay, az, ts_word0, ts_word1, _ in imu_samples:
+                ts = ((ts_word0 << 8) | (ts_word1 >> 8)) & 0xFFFFFF
                 # print(gx*GYR_LSB_DPS, gy*GYR_LSB_DPS, gz*GYR_LSB_DPS, ax*ACC_LSB_G, ay*ACC_LSB_G, az*ACC_LSB_G, ts*0.025)
-                # print(ts-prv_imu_ts)
-                # if ts - prv_imu_ts > 200:
-                #    print("imu ts gap", (ts - prv_imu_ts)*25//1000, "ms", prv_imu_ts, ts)
+                if ts - prv_imu_ts > 200 or ts - prv_imu_ts < 180:
+                    print("imu ts gap", (ts - prv_imu_ts)*25//1000, "ms", prv_imu_ts, ts)
                 # ts_diff.append(ts-prv_imu_ts)
-                # prv_imu_ts = ts
-                # i += 1
-                # tss.append(ts)
+                prv_imu_ts = ts
                 imu = Imu()
                 imu.header.frame_id = "body"
                 imu.header.stamp.sec = ts*25 // 1_000_000
@@ -68,7 +63,6 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
             # print(ts_diff)
 
         if status.get("frame"):
-        # if False:
             h, w, img_ts = cam._channel_shape(cam.get_channel(name="frame"))
 
             data = cam.channel_read("frame")
