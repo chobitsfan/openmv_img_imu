@@ -71,9 +71,11 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
                 imu_pub.publish(imu)
                 imu_us += (1_000_000 // 208)
             # print(ts_diff)
-            if img_waiting:
-                img_waiting = False
-                img_pub.publish(img)
+
+        if img_waiting and last_imu_us > img_us:
+            # print(img_us)
+            img_waiting = False
+            img_pub.publish(img)
 
         if status.get("frame"):
             h, w, img_us = cam._channel_shape(cam.get_channel(name="frame"))
