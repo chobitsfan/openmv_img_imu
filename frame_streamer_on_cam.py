@@ -54,6 +54,8 @@ def read_fifo_continuous_with_timestamp():
     data = bytearray(unread_bytes)
     imu.__read_reg_burst(0x3E, data)
 
+    struct.pack_into('<I', data, unread_bytes - 4, imu_us)
+
     return data
 
 
@@ -79,9 +81,6 @@ class FrameChannel:
 class ImuChannel:
     def size(self):
         return len(imu_samples)
-
-    def shape(self):
-        return (imu_start_ts,)
 
     def poll(self):
         return imu_ready
@@ -163,19 +162,20 @@ time.sleep_ms(5)
 imu.__write_reg(FIFO_CTRL5, 0x2E)
 
 start_ts = time.ticks_us()
-imu_start_ts = read_current_timestamp()
 img_ts = time.ticks_us()
 img_us = 0
+imu_us = 0
 
 while True:
     if not imu_ready:
+        imu_us = time.ticks_diff(time.ticks_us(), start_ts)
         imu_samples = read_fifo_continuous_with_timestamp()
         imu_ready = bool(imu_samples)
     if not frame_ready:
         now_ts = time.ticks_us()
         if time.ticks_diff(now_ts, img_ts) > 49000:
             csi0.snapshot(image=img)
+            img_us = time.ticks_diff(now_ts, start_ts) + csi0.exposure_us() // 2
             img_ts = now_ts
-            img_us = time.ticks_diff(img_ts, start_ts) + csi0.exposure_us() // 2
             img_mv = memoryview(img)
             frame_ready = True

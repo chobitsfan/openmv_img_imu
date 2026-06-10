@@ -36,8 +36,9 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
     cam.streaming(False)
     print("ok")
     # pi_ts = time.monotonic_ns()
-    prv_imu_ts = 0
+#    prv_imu_ts = 0
 #    img_i = 0
+    img_waiting = False
 
     while True:
         if text := cam.read_stdout():
@@ -45,19 +46,22 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
         status = cam.read_status()
         if status.get("imu"):
             data = cam.channel_read("imu")
-            (imu_start_ts,) = cam._channel_shape(cam.get_channel(name="imu"))
-            imu_samples = list(struct.iter_unpack('hhhhhhHHH', data))
+            # (last_imu_us,) = cam._channel_shape(cam.get_channel(name="imu"))
+            last_imu_us = struct.unpack_from('<I', data, len(data)-4)[0]
+            imu_samples = list(struct.iter_unpack('<hhhhhhHHH', data))
+            imu_us = last_imu_us - 1_000_000 // 208 * (len(imu_samples) - 1)
+            # print(last_imu_us, len(imu_samples))
             for gx, gy, gz, ax, ay, az, ts_word0, ts_word1, _ in imu_samples:
-                imu_ts = ((ts_word0 << 8) | (ts_word1 >> 8)) & 0xFFFFFF
+                # imu_ts = ((ts_word0 << 8) | (ts_word1 >> 8)) & 0xFFFFFF
                 # print(gx*GYR_LSB_DPS, gy*GYR_LSB_DPS, gz*GYR_LSB_DPS, ax*ACC_LSB_G, ay*ACC_LSB_G, az*ACC_LSB_G, imu_ts*0.025)
-                if prv_imu_ts > 0 and (imu_ts - prv_imu_ts > 200 or imu_ts - prv_imu_ts < 190):
-                    print("imu ts gap", (imu_ts - prv_imu_ts)*25//1000, "ms", prv_imu_ts, imu_ts)
+                # if prv_imu_ts > 0 and (imu_ts - prv_imu_ts > 200 or imu_ts - prv_imu_ts < 190):
+                #    print("imu ts gap", (imu_ts - prv_imu_ts)*25//1000, "ms", prv_imu_ts, imu_ts)
                 # ts_diff.append(ts-prv_imu_ts)
-                prv_imu_ts = imu_ts
+                # prv_imu_ts = imu_ts
                 imu = Imu()
                 imu.header.frame_id = "body"
-                imu.header.stamp.sec = (imu_ts - imu_start_ts) *25 // 1_000_000
-                imu.header.stamp.nanosec = ((imu_ts - imu_start_ts) * 25 % 1_000_000) * 1000
+                imu.header.stamp.sec = imu_us // 1_000_000
+                imu.header.stamp.nanosec = (imu_us % 1_000_000) * 1000
                 imu.linear_acceleration.x = (ax * ACC_TO_MSS - acc_offset[0]) * acc_scale[0]
                 imu.linear_acceleration.y = (ay * ACC_TO_MSS - acc_offset[1]) * acc_scale[1]
                 imu.linear_acceleration.z = (az * ACC_TO_MSS - acc_offset[2]) * acc_scale[2]
@@ -65,10 +69,15 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
                 imu.angular_velocity.y = gy * GYRO_TO_RPS
                 imu.angular_velocity.z = gz * GYRO_TO_RPS
                 imu_pub.publish(imu)
+                imu_us += (1_000_000 // 208)
             # print(ts_diff)
+            if img_waiting:
+                img_waiting = False
+                img_pub.publish(img)
 
         if status.get("frame"):
-            h, w, img_ts = cam._channel_shape(cam.get_channel(name="frame"))
+            h, w, img_us = cam._channel_shape(cam.get_channel(name="frame"))
+            # print(img_us)
 
             data = cam.channel_read("frame")
 
@@ -87,14 +96,14 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
 
             img = Image()
             img.header.frame_id = "body"
-            img.header.stamp.sec = img_ts // 1000000
-            img.header.stamp.nanosec = (img_ts % 1000000) * 1000
+            img.header.stamp.sec = img_us // 1000000
+            img.header.stamp.nanosec = (img_us % 1000000) * 1000
             img.width = w
             img.height = h
             img.is_bigendian = 0
             img.encoding = "mono8"
             img.step = w
             img.data = data
-            img_pub.publish(img)
+            img_waiting = True
 
 #    cv2.destroyAllWindows()
