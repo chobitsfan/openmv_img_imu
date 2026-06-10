@@ -49,10 +49,9 @@ def read_fifo_continuous_with_timestamp():
     unread_bytes = (status[0] | ((status[1] & 0x07) << 8)) * 2
 
     # occasionally, DIFF_FIFO is not a full acc+gyro+timestamp sample
-    to_read = (unread_bytes // 18) * 18
-    if to_read == 0:
+    if unread_bytes == 0 or unread_bytes % 18 > 0:
         return None
-    data = bytearray(to_read)
+    data = bytearray(unread_bytes)
     imu.__read_reg_burst(0x3E, data)
 
     return data
