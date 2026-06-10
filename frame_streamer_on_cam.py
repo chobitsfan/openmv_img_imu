@@ -62,7 +62,7 @@ class FrameChannel:
         return len(img_mv)
 
     def shape(self):
-        return (img.height(), img.width(), time.ticks_diff(img_ts, start_ts))
+        return (img.height(), img.width(), img_us)
 
     def poll(self):
         return frame_ready
@@ -165,6 +165,7 @@ imu.__write_reg(FIFO_CTRL5, 0x2E)
 start_ts = time.ticks_us()
 imu_start_ts = read_current_timestamp()
 img_ts = time.ticks_us()
+img_us = 0
 
 while True:
     if not imu_ready:
@@ -175,5 +176,6 @@ while True:
         if time.ticks_diff(now_ts, img_ts) > 49000:
             csi0.snapshot(image=img)
             img_ts = now_ts
+            img_us = time.ticks_diff(img_ts, start_ts) + csi0.exposure_us() // 2
             img_mv = memoryview(img)
             frame_ready = True
