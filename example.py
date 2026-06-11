@@ -11,9 +11,9 @@ from sensor_msgs.msg import Image, Imu
 
 ACC_LSB_G   = 0.244 / 1000        # +/-8 g   -> 0.244 mg/LSB
 GYR_LSB_DPS = 70.0 / 1000         # 2000 dps -> 70 mdps/LSB
-
 ACC_TO_MSS = ACC_LSB_G * 9.80665
 GYRO_TO_RPS = GYR_LSB_DPS * math.pi / 180
+SAMPLE_INTERVAL_US = round(1_000_000 / 208)
 
 with open('acc_cali.csv', 'r') as f:
     acc_offset = tuple(float(x) for x in f.readline().split(','))
@@ -36,11 +36,9 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
     cam.streaming(False)
     print("ok")
     # pi_ts = time.monotonic_ns()
-    # prv_imu_ts = 0
+    last_imu_us = 0
 #    img_i = 0
     img_waiting = False
-    last_imu_us = 0
-    # prv_last_imu_us = 0
 
     while True:
         if text := cam.read_stdout():
@@ -48,13 +46,11 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
         status = cam.read_status()
         if status.get("imu"):
             data = cam.channel_read("imu")
-            # (last_imu_us,) = cam._channel_shape(cam.get_channel(name="imu"))
-            last_imu_us = struct.unpack_from('<I', data, 12)[0]
-            # print(last_imu_us - prv_last_imu_us)
-            # prv_last_imu_us = last_imu_us
             imu_samples = list(struct.iter_unpack('<hhhhhhHHH', data))
-            imu_us = last_imu_us - 1_000_000 // 208 * 4
+            last_imu_us = struct.unpack_from('<I', data, 12)[0]
+            imu_us = last_imu_us - SAMPLE_INTERVAL_US * (len(imu_samples) - 1)
             # print(len(imu_samples))
+            # print((imu_us - last_imu_us)//1000)
             for gx, gy, gz, ax, ay, az, ts_word0, ts_word1, _ in imu_samples:
                 # imu_ts = ((ts_word0 << 8) | (ts_word1 >> 8)) & 0xFFFFFF
                 # print(gx*GYR_LSB_DPS, gy*GYR_LSB_DPS, gz*GYR_LSB_DPS, ax*ACC_LSB_G, ay*ACC_LSB_G, az*ACC_LSB_G, imu_ts*0.025)
@@ -73,11 +69,10 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
                 imu.angular_velocity.y = gy * GYRO_TO_RPS
                 imu.angular_velocity.z = gz * GYRO_TO_RPS
                 imu_pub.publish(imu)
-                imu_us += (1_000_000 // 208)
+                imu_us += SAMPLE_INTERVAL_US
             # print(ts_diff)
 
         if img_waiting and last_imu_us > img_us:
-            # print(img_us)
             img_waiting = False
             img_pub.publish(img)
 
@@ -102,8 +97,8 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
 
             img = Image()
             img.header.frame_id = "body"
-            img.header.stamp.sec = img_us // 1000000
-            img.header.stamp.nanosec = (img_us % 1000000) * 1000
+            img.header.stamp.sec = img_us // 1_000_000
+            img.header.stamp.nanosec = (img_us % 1_000_000) * 1000
             img.width = w
             img.height = h
             img.is_bigendian = 0

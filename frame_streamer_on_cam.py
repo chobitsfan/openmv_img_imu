@@ -4,6 +4,9 @@ import time
 import imu
 import struct
 import machine
+import micropython
+
+micropython.alloc_emergency_exception_buf(100)
 
 # --- LSM6DSM Register Addresses ---
 CTRL1_XL = 0x10  # Accel control register
@@ -40,6 +43,8 @@ def read_current_timestamp():
 
 
 def read_fifo_continuous_with_timestamp():
+    imu_us = time.ticks_diff(time.ticks_us(), start_ts)
+
     status = bytearray(2)
     imu.__read_reg_burst(FIFO_STATUS1, status)
 
@@ -54,16 +59,13 @@ def read_fifo_continuous_with_timestamp():
     data = bytearray(unread_bytes)
     imu.__read_reg_burst(0x3E, data)
 
-    imu_us = time.ticks_diff(imu_fifo_ts, start_ts)
     struct.pack_into('<I', data, 12, imu_us)
 
     return data
 
 
 def imu_fifo_cb(pin):
-    global imu_fifo_ts
     global imu_fifo_reach_th
-    imu_fifo_ts = time.ticks_us()
     imu_fifo_reach_th = True
 
 
@@ -173,7 +175,6 @@ imu.__write_reg(FIFO_CTRL5, 0x2E)
 
 start_ts = time.ticks_us()
 img_ts = time.ticks_us()
-imu_fifo_ts = time.ticks_us()
 imu_fifo_reach_th = False
 imu_us = 0
 
