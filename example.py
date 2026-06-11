@@ -36,9 +36,11 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
     cam.streaming(False)
     print("ok")
     # pi_ts = time.monotonic_ns()
-#    prv_imu_ts = 0
+    # prv_imu_ts = 0
 #    img_i = 0
     img_waiting = False
+    last_imu_us = 0
+    # prv_last_imu_us = 0
 
     while True:
         if text := cam.read_stdout():
@@ -47,10 +49,12 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
         if status.get("imu"):
             data = cam.channel_read("imu")
             # (last_imu_us,) = cam._channel_shape(cam.get_channel(name="imu"))
-            last_imu_us = struct.unpack_from('<I', data, len(data)-4)[0]
+            last_imu_us = struct.unpack_from('<I', data, 12)[0]
+            # print(last_imu_us - prv_last_imu_us)
+            # prv_last_imu_us = last_imu_us
             imu_samples = list(struct.iter_unpack('<hhhhhhHHH', data))
-            imu_us = last_imu_us - 1_000_000 // 208 * (len(imu_samples) - 1)
-            # print(last_imu_us, len(imu_samples))
+            imu_us = last_imu_us - 1_000_000 // 208 * 4
+            # print(len(imu_samples))
             for gx, gy, gz, ax, ay, az, ts_word0, ts_word1, _ in imu_samples:
                 # imu_ts = ((ts_word0 << 8) | (ts_word1 >> 8)) & 0xFFFFFF
                 # print(gx*GYR_LSB_DPS, gy*GYR_LSB_DPS, gz*GYR_LSB_DPS, ax*ACC_LSB_G, ay*ACC_LSB_G, az*ACC_LSB_G, imu_ts*0.025)

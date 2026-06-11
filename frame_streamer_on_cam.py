@@ -3,6 +3,7 @@ import protocol
 import time
 import imu
 import struct
+import machine
 
 # --- LSM6DSM Register Addresses ---
 CTRL1_XL = 0x10  # Accel control register
@@ -49,14 +50,21 @@ def read_fifo_continuous_with_timestamp():
     unread_bytes = (status[0] | ((status[1] & 0x07) << 8)) * 2
 
     # occasionally, DIFF_FIFO is not a full acc+gyro+timestamp sample
-    if unread_bytes == 0 or unread_bytes % 18 > 0:
-        return None
+    unread_bytes = (unread_bytes // 18) * 18
     data = bytearray(unread_bytes)
     imu.__read_reg_burst(0x3E, data)
 
-    struct.pack_into('<I', data, unread_bytes - 4, imu_us)
+    imu_us = time.ticks_diff(imu_fifo_ts, start_ts)
+    struct.pack_into('<I', data, 12, imu_us)
 
     return data
+
+
+def imu_fifo_cb(pin):
+    global imu_fifo_ts
+    global imu_fifo_reach_th
+    imu_fifo_ts = time.ticks_us()
+    imu_fifo_reach_th = True
 
 
 class FrameChannel:
@@ -154,6 +162,8 @@ imu_ready = False
 protocol.register(name="frame", backend=FrameChannel())
 protocol.register(name="imu", backend=ImuChannel())
 
+machine.Pin('P15_4', mode=machine.Pin.IN).irq(handler=imu_fifo_cb, trigger=machine.Pin.IRQ_RISING, hard=True)
+
 # reset timestamp count
 imu.__write_reg(TIMESTAMP2_REG, 0xaa)
 # bypass (FIFO_MODE=000) empties the FIFO and resets its pointers
@@ -163,14 +173,15 @@ imu.__write_reg(FIFO_CTRL5, 0x2E)
 
 start_ts = time.ticks_us()
 img_ts = time.ticks_us()
-img_us = 0
+imu_fifo_ts = time.ticks_us()
+imu_fifo_reach_th = False
 imu_us = 0
 
 while True:
-    if not imu_ready:
-        imu_us = time.ticks_diff(time.ticks_us(), start_ts)
+    if imu_fifo_reach_th:
         imu_samples = read_fifo_continuous_with_timestamp()
-        imu_ready = bool(imu_samples)
+        imu_ready = True
+        imu_fifo_reach_th = False
     if not frame_ready:
         now_ts = time.ticks_us()
         if time.ticks_diff(now_ts, img_ts) > 49000:
