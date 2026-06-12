@@ -29,36 +29,23 @@ TIMESTAMP1_REG = 0x41
 TIMESTAMP2_REG = 0x42
 
 
-def read_current_timestamp():
-    """
-    Reads the current 24-bit timestamp directly from the hardware registers.
-    """
-    data = bytearray(3)
-    imu.__read_reg_burst(TIMESTAMP0_REG, data)
-
-    # Combine the 3 bytes into a single 24-bit integer
-    timestamp_24bit = data[0] | (data[1] << 8) | (data[2] << 16)
-
-    return timestamp_24bit
-
-
 def read_fifo_continuous_with_timestamp():
-    status = bytearray(2)
-    imu.__read_reg_burst(FIFO_STATUS1, status)
+    status1 = imu.__read_reg(FIFO_STATUS1)
+    status2 = imu.__read_reg(FIFO_STATUS2)
 
-    if status[1] & 0x40:
+    if status2 & 0x40:
         print("FIFO overrun occurred!")
 
     # DIFF_FIFO is an 11-bit value representing unread 16-bit words
-    unread_bytes = (status[0] | ((status[1] & 0x07) << 8)) * 2
+    unread_bytes = (status1 | ((status2 & 0x07) << 8)) * 2
 
-    # occasionally, DIFF_FIFO is not a full acc+gyro+timestamp sample
-    unread_bytes = (unread_bytes // 18) * 18
+    # occasionally, DIFF_FIFO is not a full acc+gyro sample
+    unread_bytes = (unread_bytes // 12) * 12
     data = bytearray(unread_bytes)
-    imu.__read_reg_burst(0x3E, data)
+    imu.__read_reg(0x3E, data)
 
     imu_us = time.ticks_diff(imu_fifo_ts, start_ts)
-    struct.pack_into('<I', data, 12, imu_us)
+    data += imu_us.to_bytes(4, 'little')
 
     return data
 
@@ -114,11 +101,11 @@ imu.__write_reg(CTRL3_C, 0x44)
 
 # 2. Timestamp resolution (25 us / LSB)
 # TIMER_HR (bit 4) = 1 in WAKE_UP_DUR register -> 0x10
-imu.__write_reg(WAKE_UP_DUR, 0x10)
+# imu.__write_reg(WAKE_UP_DUR, 0x10)
 
 # 3. Enable the Hardware Timestamp Timer AND the Embedded Digital Block
 # TIMER_EN (bit 5) = 1, FUNC_EN (bit 2) = 1 -> 0x24
-imu.__write_reg(CTRL10_C, 0x24)
+# imu.__write_reg(CTRL10_C, 0x24)
 
 # 4. Set Accelerometer ODR to 208Hz, 8g
 imu.__write_reg(CTRL1_XL, 0x5c)
@@ -128,11 +115,10 @@ imu.__write_reg(CTRL2_G, 0x5c)
 
 # 6. Enable Timestamp routing to the FIFO at every Data-Ready (DRDY)
 #    FTH[10:8] = 0 (upper 3 bits of the 90-byte watermark, see FIFO_CTRL1)
-imu.__write_reg(FIFO_CTRL2, 0x80)
+# imu.__write_reg(FIFO_CTRL2, 0x80)
 
-# 6a. FIFO watermark = 90 bytes. FTH resolution is 1 LSB = 2 bytes (1 word),
-#     so 90 bytes -> FTH = 45 = 0x2D. WaterM/INT1_FTH asserts when unread >= 90 bytes.
-imu.__write_reg(FIFO_CTRL1, 0x2D)
+# 6a. FIFO watermark. FTH unit is word (2 bytes), WaterM/INT1_FTH asserts when unread word >= FTH.
+imu.__write_reg(FIFO_CTRL1, 30)
 
 # 6b. Route the FIFO threshold (watermark) flag to the INT1 pin.
 #     INT1_FTH = bit 3 -> 0x08. INT1 is push-pull, active-high (CTRL3_C defaults).
@@ -142,7 +128,7 @@ imu.__write_reg(INT1_CTRL, 0x08)
 imu.__write_reg(FIFO_CTRL3, 0x09)
 
 # 8. Set FIFO decimation: No decimation for Timestamp (Dataset 4)
-imu.__write_reg(FIFO_CTRL4, 0x08)
+# imu.__write_reg(FIFO_CTRL4, 0x08)
 
 # 9. Set FIFO ODR to 208Hz and mode to Continuous
 imu.__write_reg(FIFO_CTRL5, 0x2E)
@@ -180,7 +166,7 @@ imu_fifo_reach_th = False
 imu_us = 0
 
 while True:
-    if imu_fifo_reach_th:
+    if imu_fifo_reach_th and (not imu_ready):
         imu_samples = read_fifo_continuous_with_timestamp()
         imu_ready = True
         imu_fifo_reach_th = False

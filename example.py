@@ -46,10 +46,11 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
         status = cam.read_status()
         if status.get("imu"):
             data = cam.channel_read("imu")
-            imu_us_5th = struct.unpack_from('<I', data, 12)[0]
-            imu_samples = list(struct.iter_unpack('<hhhhhhHHH', data))
+            # print(len(data))
+            imu_us_5th = struct.unpack_from('<I', data, len(data) - 4)[0]
+            imu_samples = list(struct.iter_unpack('<hhhhhh', data[:-4]))
             imu_us = imu_us_5th - IMU_INTERVAL_US * 4
-            for gx, gy, gz, ax, ay, az, ts_word0, ts_word1, _ in imu_samples:
+            for gx, gy, gz, ax, ay, az in imu_samples:
                 imu = Imu()
                 imu.header.frame_id = "body"
                 imu.header.stamp.sec = imu_us // 1_000_000
