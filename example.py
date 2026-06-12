@@ -11,9 +11,9 @@ from sensor_msgs.msg import Image, Imu
 
 ACC_LSB_G   = 0.244 / 1000        # +/-8 g   -> 0.244 mg/LSB
 GYR_LSB_DPS = 70.0 / 1000         # 2000 dps -> 70 mdps/LSB
-
 ACC_TO_MSS = ACC_LSB_G * 9.80665
 GYRO_TO_RPS = GYR_LSB_DPS * math.pi / 180
+IMU_INTERVAL_US = round(1_000_000 / 208)
 
 with open('acc_cali.csv', 'r') as f:
     acc_offset = tuple(float(x) for x in f.readline().split(','))
@@ -36,11 +36,9 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
     cam.streaming(False)
     print("ok")
     # pi_ts = time.monotonic_ns()
-    # prv_imu_ts = 0
 #    img_i = 0
     img_waiting = False
-    last_imu_us = 0
-    # prv_last_imu_us = 0
+    imu_us_5th = 0
 
     while True:
         if text := cam.read_stdout():
@@ -48,20 +46,10 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
         status = cam.read_status()
         if status.get("imu"):
             data = cam.channel_read("imu")
-            # (last_imu_us,) = cam._channel_shape(cam.get_channel(name="imu"))
-            last_imu_us = struct.unpack_from('<I', data, 12)[0]
-            # print(last_imu_us - prv_last_imu_us)
-            # prv_last_imu_us = last_imu_us
+            imu_us_5th = struct.unpack_from('<I', data, 12)[0]
             imu_samples = list(struct.iter_unpack('<hhhhhhHHH', data))
-            imu_us = last_imu_us - 1_000_000 // 208 * 4
-            # print(len(imu_samples))
+            imu_us = imu_us_5th - IMU_INTERVAL_US * 4
             for gx, gy, gz, ax, ay, az, ts_word0, ts_word1, _ in imu_samples:
-                # imu_ts = ((ts_word0 << 8) | (ts_word1 >> 8)) & 0xFFFFFF
-                # print(gx*GYR_LSB_DPS, gy*GYR_LSB_DPS, gz*GYR_LSB_DPS, ax*ACC_LSB_G, ay*ACC_LSB_G, az*ACC_LSB_G, imu_ts*0.025)
-                # if prv_imu_ts > 0 and (imu_ts - prv_imu_ts > 200 or imu_ts - prv_imu_ts < 190):
-                #    print("imu ts gap", (imu_ts - prv_imu_ts)*25//1000, "ms", prv_imu_ts, imu_ts)
-                # ts_diff.append(ts-prv_imu_ts)
-                # prv_imu_ts = imu_ts
                 imu = Imu()
                 imu.header.frame_id = "body"
                 imu.header.stamp.sec = imu_us // 1_000_000
@@ -73,17 +61,14 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
                 imu.angular_velocity.y = gy * GYRO_TO_RPS
                 imu.angular_velocity.z = gz * GYRO_TO_RPS
                 imu_pub.publish(imu)
-                imu_us += (1_000_000 // 208)
-            # print(ts_diff)
+                imu_us += IMU_INTERVAL_US
 
-        if img_waiting and last_imu_us > img_us:
-            # print(img_us)
+        if img_waiting and imu_us_5th > img_us:
             img_waiting = False
             img_pub.publish(img)
 
         if status.get("frame"):
             h, w, img_us = cam._channel_shape(cam.get_channel(name="frame"))
-            # print(img_us)
 
             data = cam.channel_read("frame")
 

@@ -4,6 +4,9 @@ import time
 import imu
 import struct
 import machine
+import micropython
+
+micropython.alloc_emergency_exception_buf(100)
 
 # --- LSM6DSM Register Addresses ---
 CTRL1_XL = 0x10  # Accel control register
@@ -61,8 +64,7 @@ def read_fifo_continuous_with_timestamp():
 
 
 def imu_fifo_cb(pin):
-    global imu_fifo_ts
-    global imu_fifo_reach_th
+    global imu_fifo_ts, imu_fifo_reach_th
     imu_fifo_ts = time.ticks_us()
     imu_fifo_reach_th = True
 
