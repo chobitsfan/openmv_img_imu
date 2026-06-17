@@ -167,9 +167,9 @@ imu_us = 0
 
 while True:
     if imu_fifo_reach_th and (not imu_ready):
+        imu_fifo_reach_th = False
         imu_samples = read_fifo()
         imu_ready = True
-        imu_fifo_reach_th = False
     if not frame_ready:
         now_ts = time.ticks_us()
         if time.ticks_diff(now_ts, img_ts) > 49000:

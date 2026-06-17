@@ -13,7 +13,8 @@ ACC_LSB_G   = 0.244 / 1000        # +/-8 g   -> 0.244 mg/LSB
 GYR_LSB_DPS = 70.0 / 1000         # 2000 dps -> 70 mdps/LSB
 ACC_TO_MSS = ACC_LSB_G * 9.80665
 GYRO_TO_RPS = GYR_LSB_DPS * math.pi / 180
-IMU_INTERVAL_US = round(1_000_000 / 208)
+# IMU_INTERVAL_US = round(1_000_000 / 208)
+IMU_INTERVAL_US = 4636
 
 with open('acc_cali.csv', 'r') as f:
     acc_offset = tuple(float(x) for x in f.readline().split(','))
@@ -50,8 +51,12 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
             # print(len(data))
             imu_us_5th = struct.unpack_from('<I', data, len(data) - 4)[0]
             imu_samples = list(struct.iter_unpack('<hhhhhh', data[:-4]))
-            imu_us = imu_us_5th - IMU_INTERVAL_US * 4
-            print(len(data), imu_us - prv_imu_us)
+            if len(imu_samples) < 5:
+                imu_us = imu_us_5th
+            else:
+                imu_us = imu_us_5th - IMU_INTERVAL_US * 4
+            if imu_us - prv_imu_us > 50000:
+                print(len(imu_samples), imu_us - prv_imu_us)
             for gx, gy, gz, ax, ay, az in imu_samples:
                 prv_imu_us = imu_us
                 imu = Imu()
