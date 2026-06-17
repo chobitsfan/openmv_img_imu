@@ -29,7 +29,7 @@ TIMESTAMP1_REG = 0x41
 TIMESTAMP2_REG = 0x42
 
 
-def read_fifo_continuous_with_timestamp():
+def read_fifo():
     status1 = imu.__read_reg(FIFO_STATUS1)
     status2 = imu.__read_reg(FIFO_STATUS2)
 
@@ -37,11 +37,11 @@ def read_fifo_continuous_with_timestamp():
         print("FIFO overrun occurred!")
 
     # DIFF_FIFO is an 11-bit value representing unread 16-bit words
-    unread_bytes = (status1 | ((status2 & 0x07) << 8)) * 2
+    words = (status1 | ((status2 & 0x07) << 8))
 
-    # occasionally, DIFF_FIFO is not a full acc+gyro sample
-    unread_bytes = (unread_bytes // 12) * 12
-    data = bytearray(unread_bytes)
+    # occasionally, DIFF_FIFO is not a full acc+gyro sample, floor to whole 6-word patterns
+    nbytes = (words // 6) * 6 * 2
+    data = bytearray(nbytes)
     imu.__read_reg(0x3E, data)
 
     imu_us = time.ticks_diff(imu_fifo_ts, start_ts)
@@ -167,7 +167,7 @@ imu_us = 0
 
 while True:
     if imu_fifo_reach_th and (not imu_ready):
-        imu_samples = read_fifo_continuous_with_timestamp()
+        imu_samples = read_fifo()
         imu_ready = True
         imu_fifo_reach_th = False
     if not frame_ready:

@@ -39,6 +39,7 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
 #    img_i = 0
     img_waiting = False
     imu_us_5th = 0
+    prv_imu_us = 0
 
     while True:
         if text := cam.read_stdout():
@@ -50,7 +51,9 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
             imu_us_5th = struct.unpack_from('<I', data, len(data) - 4)[0]
             imu_samples = list(struct.iter_unpack('<hhhhhh', data[:-4]))
             imu_us = imu_us_5th - IMU_INTERVAL_US * 4
+            print(len(data), imu_us - prv_imu_us)
             for gx, gy, gz, ax, ay, az in imu_samples:
+                prv_imu_us = imu_us
                 imu = Imu()
                 imu.header.frame_id = "body"
                 imu.header.stamp.sec = imu_us // 1_000_000
