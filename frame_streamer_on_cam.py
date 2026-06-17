@@ -29,6 +29,18 @@ TIMESTAMP1_REG = 0x41
 TIMESTAMP2_REG = 0x42
 
 
+def read_imu_ts():
+    """
+    Reads the current 24-bit timestamp directly from the hardware registers.
+    """
+    data = bytearray(3)
+    imu.__read_reg(TIMESTAMP0_REG, data)
+
+    # Combine the 3 bytes into a single 24-bit integer
+    timestamp_24bit = (data[0] | (data[1] << 8) | (data[2] << 16)) & 0xffffff
+
+    return timestamp_24bit
+
 def read_fifo():
     status1 = imu.__read_reg(FIFO_STATUS1)
     status2 = imu.__read_reg(FIFO_STATUS2)
@@ -39,20 +51,16 @@ def read_fifo():
     # DIFF_FIFO is an 11-bit value representing unread 16-bit words
     words = (status1 | ((status2 & 0x07) << 8))
 
-    # occasionally, DIFF_FIFO is not a full acc+gyro sample, floor to whole 6-word patterns
-    nbytes = (words // 6) * 6 * 2
+    # avoid partial sample
+    nbytes = (words // 9) * 9 * 2
     data = bytearray(nbytes)
     imu.__read_reg(0x3E, data)
-
-    imu_us = time.ticks_diff(imu_fifo_ts, start_ts)
-    data += imu_us.to_bytes(4, 'little')
 
     return data
 
 
 def imu_fifo_cb(pin):
-    global imu_fifo_ts, imu_fifo_reach_th
-    imu_fifo_ts = time.ticks_us()
+    global imu_fifo_reach_th
     imu_fifo_reach_th = True
 
 
@@ -79,6 +87,9 @@ class ImuChannel:
     def size(self):
         return len(imu_samples)
 
+    def shape(self):
+        return (imu_start_ts,)
+
     def poll(self):
         return imu_ready
 
@@ -101,11 +112,11 @@ imu.__write_reg(CTRL3_C, 0x44)
 
 # 2. Timestamp resolution (25 us / LSB)
 # TIMER_HR (bit 4) = 1 in WAKE_UP_DUR register -> 0x10
-# imu.__write_reg(WAKE_UP_DUR, 0x10)
+imu.__write_reg(WAKE_UP_DUR, 0x10)
 
 # 3. Enable the Hardware Timestamp Timer AND the Embedded Digital Block
 # TIMER_EN (bit 5) = 1, FUNC_EN (bit 2) = 1 -> 0x24
-# imu.__write_reg(CTRL10_C, 0x24)
+imu.__write_reg(CTRL10_C, 0x34)
 
 # 4. Set Accelerometer ODR to 208Hz, 8g
 imu.__write_reg(CTRL1_XL, 0x5c)
@@ -115,10 +126,10 @@ imu.__write_reg(CTRL2_G, 0x5c)
 
 # 6. Enable Timestamp routing to the FIFO at every Data-Ready (DRDY)
 #    FTH[10:8] = 0 (upper 3 bits of the 90-byte watermark, see FIFO_CTRL1)
-# imu.__write_reg(FIFO_CTRL2, 0x80)
+imu.__write_reg(FIFO_CTRL2, 0x80)
 
 # 6a. FIFO watermark. FTH unit is word (2 bytes), WaterM/INT1_FTH asserts when unread word >= FTH.
-imu.__write_reg(FIFO_CTRL1, 30)
+imu.__write_reg(FIFO_CTRL1, 45)
 
 # 6b. Route the FIFO threshold (watermark) flag to the INT1 pin.
 #     INT1_FTH = bit 3 -> 0x08. INT1 is push-pull, active-high (CTRL3_C defaults).
@@ -128,7 +139,7 @@ imu.__write_reg(INT1_CTRL, 0x08)
 imu.__write_reg(FIFO_CTRL3, 0x09)
 
 # 8. Set FIFO decimation: No decimation for Timestamp (Dataset 4)
-# imu.__write_reg(FIFO_CTRL4, 0x08)
+imu.__write_reg(FIFO_CTRL4, 0x08)
 
 # 9. Set FIFO ODR to 208Hz and mode to Continuous
 imu.__write_reg(FIFO_CTRL5, 0x2E)
@@ -154,27 +165,31 @@ machine.Pin('P15_4', mode=machine.Pin.IN).irq(handler=imu_fifo_cb, trigger=machi
 
 # reset timestamp count
 imu.__write_reg(TIMESTAMP2_REG, 0xaa)
+time.sleep_ms(5)
 # bypass (FIFO_MODE=000) empties the FIFO and resets its pointers
 imu.__write_reg(FIFO_CTRL5, 0x00)
 time.sleep_ms(5)
 imu.__write_reg(FIFO_CTRL5, 0x2E)
 
+# imu_start_ts = read_imu_ts()
+data = bytearray(3)
+imu.__read_reg(TIMESTAMP0_REG, data)
+# Combine the 3 bytes into a single 24-bit integer
+imu_start_ts = (data[0] | (data[1] << 8) | (data[2] << 16)) & 0xffffff
 start_ts = time.ticks_us()
-img_ts = time.ticks_us()
-imu_fifo_ts = time.ticks_us()
+prv_img_ts = time.ticks_us()
 imu_fifo_reach_th = False
-imu_us = 0
 
 while True:
     if imu_fifo_reach_th and (not imu_ready):
+        imu_fifo_reach_th = False
         imu_samples = read_fifo()
         imu_ready = True
-        imu_fifo_reach_th = False
     if not frame_ready:
         now_ts = time.ticks_us()
-        if time.ticks_diff(now_ts, img_ts) > 49000:
+        if time.ticks_diff(now_ts, prv_img_ts) > 49000:
             csi0.snapshot(image=img)
             img_us = time.ticks_diff(now_ts, start_ts) + csi0.exposure_us() // 2
-            img_ts = now_ts
+            prv_img_ts = now_ts
             img_mv = memoryview(img)
             frame_ready = True
