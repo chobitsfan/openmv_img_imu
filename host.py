@@ -14,7 +14,7 @@ GYR_LSB_DPS = 70.0 / 1000         # 2000 dps -> 70 mdps/LSB
 ACC_TO_MSS = ACC_LSB_G * 9.80665
 GYRO_TO_RPS = GYR_LSB_DPS * math.pi / 180
 # IMU_INTERVAL_US = round(1_000_000 / 208)
-IMU_INTERVAL_US = 4636
+imu_intl_us = 4680
 
 with open('acc_cali.csv', 'r') as f:
     acc_offset = tuple(float(x) for x in f.readline().split(','))
@@ -41,6 +41,8 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
     img_waiting = False
     imu_us_5th = 0
     prv_imu_us = 0
+    prv_num_samples = 0
+    prv_imu_us_5th = 0
 
     while True:
         if text := cam.read_stdout():
@@ -54,9 +56,17 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
             if len(imu_samples) < 5:
                 imu_us = imu_us_5th
             else:
-                imu_us = imu_us_5th - IMU_INTERVAL_US * 4
-            if imu_us - prv_imu_us > 5000 or imu_us - prv_imu_us < 4000:
-                print(len(imu_samples), imu_us - prv_imu_us)
+                imu_us = imu_us_5th - imu_intl_us * 4
+            if prv_imu_us > 0 and (imu_us - prv_imu_us > 5000 or imu_us - prv_imu_us < 4500):
+                print(len(imu_samples), imu_us - prv_imu_us, imu_intl_us)
+
+            if prv_num_samples >= 5 and len(imu_samples) >= 5:
+                imu_intl_us = round((imu_us_5th - prv_imu_us_5th) / prv_num_samples)
+                if imu_intl_us < 4500 or imu_intl_us > 5000:
+                    print("strange est imu intl", imu_intl_us, "us", prv_imu_us_5th, prv_num_samples, imu_us_5th)
+            prv_num_samples = len(imu_samples)
+            prv_imu_us_5th = imu_us_5th
+
             for gx, gy, gz, ax, ay, az in imu_samples:
                 prv_imu_us = imu_us
                 imu = Imu()
@@ -70,7 +80,7 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
                 imu.angular_velocity.y = gy * GYRO_TO_RPS
                 imu.angular_velocity.z = gz * GYRO_TO_RPS
                 imu_pub.publish(imu)
-                imu_us += IMU_INTERVAL_US
+                imu_us += imu_intl_us
 
         if img_waiting and imu_us_5th > img_us:
             img_waiting = False
