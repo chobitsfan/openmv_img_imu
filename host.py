@@ -40,7 +40,7 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
 #    img_i = 0
     img_waiting = False
     imu_us_5th = 0
-    prv_imu_us = 0
+    last_imu_us = 0
     prv_num_samples = 0
     prv_imu_us_5th = 0
 
@@ -57,8 +57,8 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
                 imu_us = imu_us_5th
             else:
                 imu_us = imu_us_5th - imu_intl_us * 4
-            if prv_imu_us > 0 and (imu_us - prv_imu_us > 5000 or imu_us - prv_imu_us < 4500):
-                print(len(imu_samples), imu_us - prv_imu_us, imu_intl_us)
+            if last_imu_us > 0 and (imu_us - last_imu_us > 5000 or imu_us - last_imu_us < 4500):
+                print("imu intl gap", len(imu_samples), imu_us - last_imu_us, imu_intl_us)
 
             if prv_num_samples >= 5 and len(imu_samples) >= 5:
                 imu_intl_us = round((imu_us_5th - prv_imu_us_5th) / prv_num_samples)
@@ -68,7 +68,7 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
             prv_imu_us_5th = imu_us_5th
 
             for gx, gy, gz, ax, ay, az in imu_samples:
-                prv_imu_us = imu_us
+                last_imu_us = imu_us
                 imu = Imu()
                 imu.header.frame_id = "body"
                 imu.header.stamp.sec = imu_us // 1_000_000
