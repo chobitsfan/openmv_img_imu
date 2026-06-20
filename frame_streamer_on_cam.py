@@ -39,12 +39,13 @@ def read_fifo():
     # DIFF_FIFO is an 11-bit value representing unread 16-bit words
     words = (status1 | ((status2 & 0x07) << 8))
 
+    imu_us = time.ticks_diff(imu_fifo_ts, start_ts)  # before read fifo, it may raise another irq
+
     # occasionally, DIFF_FIFO is not a full acc+gyro sample, floor to whole 6-word patterns
     nbytes = (words // 6) * 6 * 2
     data = bytearray(nbytes)
     imu.__read_reg(0x3E, data)
 
-    imu_us = time.ticks_diff(imu_fifo_ts, start_ts)
     data += imu_us.to_bytes(4, 'little')
 
     return data
@@ -167,7 +168,7 @@ imu_us = 0
 
 while True:
     if imu_fifo_reach_th and (not imu_ready):
-        imu_fifo_reach_th = False
+        imu_fifo_reach_th = False  # clear frist, read fifo may rise another irq
         imu_samples = read_fifo()
         imu_ready = True
     if not frame_ready:
