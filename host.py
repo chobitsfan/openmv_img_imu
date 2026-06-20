@@ -55,7 +55,7 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
                 imu_us = imu_us_5th
             else:
                 imu_us = imu_us_5th - IMU_INTERVAL_US * 4
-            if imu_us - prv_imu_us > 50000:
+            if imu_us - prv_imu_us > 5000 or imu_us - prv_imu_us < 4000:
                 print(len(imu_samples), imu_us - prv_imu_us)
             for gx, gy, gz, ax, ay, az in imu_samples:
                 prv_imu_us = imu_us
