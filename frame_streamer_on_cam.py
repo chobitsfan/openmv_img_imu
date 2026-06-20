@@ -88,13 +88,13 @@ class ImuChannel:
         return imu_samples
 
 
-# 0. PERFORM SOFTWARE RESET
-# SW_RESET (bit 0) = 1 -> 0x01
+# Reset flow per AN4987
+imu.__write_reg(CTRL2_G,  0x00)        # 1. gyro -> Power-Down (ODR_G = 0000)
+imu.__write_reg(CTRL1_XL, 0x50)        # 2. accel -> High-Performance (ODR=208Hz, FS=2g; any HP-mode ODR)
 imu.__write_reg(CTRL3_C, 0x01)
 
-# Wait for the sensor to complete its internal boot procedure
-# (The datasheet states boot time is typically around 15ms)
-time.sleep_ms(30)
+# 50 µs is enough
+time.sleep_ms(5)
 
 # 1. Enable Block Data Update (BDU) and Auto-increment (IF_INC)
 imu.__write_reg(CTRL3_C, 0x44)
