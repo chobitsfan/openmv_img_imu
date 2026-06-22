@@ -13,8 +13,8 @@ ACC_LSB_G   = 0.244 / 1000        # +/-8 g   -> 0.244 mg/LSB
 GYR_LSB_DPS = 70.0 / 1000         # 2000 dps -> 70 mdps/LSB
 ACC_TO_MSS = ACC_LSB_G * 9.80665
 GYRO_TO_RPS = GYR_LSB_DPS * math.pi / 180
-# IMU_INTERVAL_US = round(1_000_000 / 208)
-imu_intl_us = 4680
+imu_intl_us = round(1_000_000 / 208)
+# imu_intl_us = 4680
 
 with open('acc_cali.csv', 'r') as f:
     acc_offset = tuple(float(x) for x in f.readline().split(','))
@@ -58,12 +58,14 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
             else:
                 imu_us = imu_us_5th - imu_intl_us * 4
             if last_imu_us > 0 and (imu_us - last_imu_us > 5000 or imu_us - last_imu_us < 4500):
-                print("imu intl gap", len(imu_samples), imu_us - last_imu_us, imu_intl_us)
+                print("strange imu ts gap", len(imu_samples), imu_us - last_imu_us, imu_intl_us)
 
             if prv_num_samples >= 5 and len(imu_samples) >= 5:
-                imu_intl_us = round((imu_us_5th - prv_imu_us_5th) / prv_num_samples)
-                if imu_intl_us < 4500 or imu_intl_us > 5000:
-                    print("strange est imu intl", imu_intl_us, "us", prv_imu_us_5th, prv_num_samples, imu_us_5th)
+                est_imu_intl_us = round((imu_us_5th - prv_imu_us_5th) / prv_num_samples)
+                if est_imu_intl_us < 4500 or est_imu_intl_us > 5000:
+                    print("strange est imu intl", est_imu_intl_us, "us", prv_num_samples, prv_imu_us_5th, imu_us_5th)
+                else:
+                    imu_intl_us = est_imu_intl_us
             prv_num_samples = len(imu_samples)
             prv_imu_us_5th = imu_us_5th
 
