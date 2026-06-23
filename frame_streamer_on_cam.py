@@ -62,7 +62,7 @@ class FrameChannel:
         return len(img_mv)
 
     def shape(self):
-        return (img.height(), img.width(), img_us)
+        return (img.height(), img.width(), img_us, time.ticks_diff(time.ticks_us(), start_ts))
 
     def poll(self):
         return frame_ready

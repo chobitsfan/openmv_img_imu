@@ -8,6 +8,7 @@ from openmv.camera import Camera
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSDurabilityPolicy
 from sensor_msgs.msg import Image, Imu
+from std_msgs.msg import Int64
 
 ACC_LSB_G   = 0.244 / 1000        # +/-8 g   -> 0.244 mg/LSB
 GYR_LSB_DPS = 70.0 / 1000         # 2000 dps -> 70 mdps/LSB
@@ -24,6 +25,7 @@ rclpy.init()
 node = rclpy.create_node('openmv')
 img_pub = node.create_publisher(Image, "mono_left", QoSProfile(depth=1, reliability=QoSReliabilityPolicy.BEST_EFFORT))
 imu_pub = node.create_publisher(Imu, "imu", 200)
+t_offset_pub = node.create_publisher(Int64, "pico_pi_t_offset", QoSProfile(depth=1, reliability=QoSReliabilityPolicy.BEST_EFFORT))  # I use pico in the beginning
 
 # The on-cam script above, stored as a string (or read from a file).
 SCRIPT = open("frame_streamer_on_cam.py").read()
@@ -36,13 +38,14 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
     cam.exec(SCRIPT)
     cam.streaming(False)
     print("ok")
-    # pi_ts = time.monotonic_ns()
 #    img_i = 0
     img_waiting = False
     imu_us_5th = 0
     last_imu_us = 0
     prv_num_samples = 0
     prv_imu_us_5th = 0
+    frame_ch_id = None
+    cnt = 0
 
     while True:
         if text := cam.read_stdout():
@@ -89,13 +92,18 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
             img_pub.publish(img)
 
         if status.get("frame"):
-            h, w, img_us = cam._channel_shape(cam.get_channel(name="frame"))
+            if frame_ch_id is None:
+                frame_ch_id = cam.get_channel(name="frame")
+            h, w, img_us, cam_us = cam._channel_shape(frame_ch_id)
+            cnt += 1
+            if cnt > 50:
+                cnt = 0
+                now_ns = time.monotonic_ns()
+                t_off = Int64()
+                t_off.data = cam_us * 1000 - now_ns
+                t_offset_pub.publish(t_off)
 
             data = cam.channel_read("frame")
-
-            # pi_ts2 = time.monotonic_ns()
-            # print((pi_ts2 - pi_ts)//1000000, 'ms')
-            # pi_ts = pi_ts2
 
 #            cv_img = np.frombuffer(data, np.uint8).reshape(h, w)
 #            cv2.imshow("OpenMV", cv_img)
