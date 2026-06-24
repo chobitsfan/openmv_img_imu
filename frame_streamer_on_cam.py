@@ -154,7 +154,7 @@ protocol.register(name="imu", backend=ImuChannel())
 machine.Pin('P15_4', mode=machine.Pin.IN).irq(handler=imu_fifo_cb, trigger=machine.Pin.IRQ_RISING, hard=True)
 
 # reset timestamp count
-imu.__write_reg(TIMESTAMP2_REG, 0xaa)
+# imu.__write_reg(TIMESTAMP2_REG, 0xaa)
 # bypass (FIFO_MODE=000) empties the FIFO and resets its pointers
 imu.__write_reg(FIFO_CTRL5, 0x00)
 time.sleep_ms(5)
