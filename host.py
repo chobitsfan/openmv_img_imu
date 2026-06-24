@@ -10,12 +10,8 @@ from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSDurabilityPolicy
 from sensor_msgs.msg import Image, Imu
 from std_msgs.msg import Int64
 
-ACC_LSB_G   = 0.244 / 1000        # +/-8 g   -> 0.244 mg/LSB
-GYR_LSB_DPS = 70.0 / 1000         # 2000 dps -> 70 mdps/LSB
-ACC_TO_MSS = ACC_LSB_G * 9.80665
-GYRO_TO_RPS = GYR_LSB_DPS * math.pi / 180
-imu_intl_us = round(1_000_000 / 208)
-# imu_intl_us = 4680
+MG_TO_MSS = 9.80665 / 1000
+MDPS_TO_RPS = math.pi / 180 / 1000
 
 with open('acc_cali.csv', 'r') as f:
     acc_offset = tuple(float(x) for x in f.readline().split(','))
@@ -39,13 +35,10 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
     cam.streaming(False)
     print("ok")
 #    img_i = 0
-    img_waiting = False
-    imu_us_5th = 0
-    last_imu_us = 0
-    prv_num_samples = 0
-    prv_imu_us_5th = 0
     frame_ch_id = None
     cnt = 0
+    prv_imu_us = 0
+    img_waiting = False
 
     while True:
         if text := cam.read_stdout():
@@ -54,40 +47,25 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
         if status.get("imu"):
             data = cam.channel_read("imu")
             # print(len(data))
-            imu_us_5th = struct.unpack_from('<I', data, len(data) - 4)[0]
-            imu_samples = list(struct.iter_unpack('<hhhhhh', data[:-4]))
-            if len(imu_samples) < 5:
-                imu_us = imu_us_5th
-            else:
-                imu_us = imu_us_5th - imu_intl_us * 4
-            if last_imu_us > 0 and (imu_us - last_imu_us > 5000 or imu_us - last_imu_us < 4500):
-                print("strange imu ts gap", len(imu_samples), imu_us - last_imu_us, imu_intl_us)
-
-            if prv_num_samples >= 5 and len(imu_samples) >= 5:
-                est_imu_intl_us = round((imu_us_5th - prv_imu_us_5th) / prv_num_samples)
-                if est_imu_intl_us < 4500 or est_imu_intl_us > 5000:
-                    print("strange est imu intl", est_imu_intl_us, "us", prv_num_samples, prv_imu_us_5th, imu_us_5th)
-                else:
-                    imu_intl_us = est_imu_intl_us
-            prv_num_samples = len(imu_samples)
-            prv_imu_us_5th = imu_us_5th
-
-            for gx, gy, gz, ax, ay, az in imu_samples:
-                last_imu_us = imu_us
+            imu_samples = list(struct.iter_unpack("<Iffffff", data))
+            # print(len(imu_samples))
+            for imu_us, gx, gy, gz, ax, ay, az in imu_samples:
+                if prv_imu_us > 0 and imu_us - prv_imu_us > 5000:
+                    print("imu ts gap", imu_us - prv_imu_us)
+                prv_imu_us = imu_us
                 imu = Imu()
                 imu.header.frame_id = "body"
                 imu.header.stamp.sec = imu_us // 1_000_000
                 imu.header.stamp.nanosec = (imu_us % 1_000_000) * 1000
-                imu.linear_acceleration.x = (ax * ACC_TO_MSS - acc_offset[0]) * acc_scale[0]
-                imu.linear_acceleration.y = (ay * ACC_TO_MSS - acc_offset[1]) * acc_scale[1]
-                imu.linear_acceleration.z = (az * ACC_TO_MSS - acc_offset[2]) * acc_scale[2]
-                imu.angular_velocity.x = gx * GYRO_TO_RPS
-                imu.angular_velocity.y = gy * GYRO_TO_RPS
-                imu.angular_velocity.z = gz * GYRO_TO_RPS
+                imu.linear_acceleration.x = (ax * MG_TO_MSS - acc_offset[0]) * acc_scale[0]
+                imu.linear_acceleration.y = (ay * MG_TO_MSS - acc_offset[1]) * acc_scale[1]
+                imu.linear_acceleration.z = (az * MG_TO_MSS - acc_offset[2]) * acc_scale[2]
+                imu.angular_velocity.x = gx * MDPS_TO_RPS
+                imu.angular_velocity.y = gy * MDPS_TO_RPS
+                imu.angular_velocity.z = gz * MDPS_TO_RPS
                 imu_pub.publish(imu)
-                imu_us += imu_intl_us
 
-        if img_waiting and imu_us_5th > img_us:
+        if img_waiting and prv_imu_us > img_us:
             img_waiting = False
             img_pub.publish(img)
 
