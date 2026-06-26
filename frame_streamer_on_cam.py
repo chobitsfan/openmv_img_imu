@@ -168,8 +168,8 @@ imu_us = 0
 
 while True:
     if imu_fifo_reach_th and (not imu_ready):
-        imu_fifo_reach_th = False  # clear frist, read fifo may rise another irq
         imu_samples = read_fifo()
+        imu_fifo_reach_th = False  # during fifo reading, incoming imu sample may trigger another irq. but we do not care
         imu_ready = True
     if not frame_ready:
         now_ts = time.ticks_us()
