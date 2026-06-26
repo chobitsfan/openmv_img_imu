@@ -3,6 +3,7 @@ import protocol
 import openamp
 import refclk
 import machine
+# import time
 
 imu_samples_fill = bytearray()
 imu_samples_xfer = bytearray()
@@ -65,9 +66,11 @@ async def task1(ept):
     import imu
     import refclk
     import machine
-    import struct
+    # import asyncio
 
     drdy = False
+    imu_us_buf = bytearray(4)
+    buf = bytearray(16)
 
     def imu_drdy_cb(pin):
         nonlocal drdy
@@ -79,11 +82,13 @@ async def task1(ept):
     machine.Pin('P15_4', mode=machine.Pin.IN).irq(handler=imu_drdy_cb, trigger=machine.Pin.IRQ_RISING, hard=True)
     while True:
         if drdy:
+            refclk.now_us(imu_us_buf)
             drdy = False
-            now_us = refclk.now_us()
-            ax, ay, az = imu.acceleration_mg()
-            gx, gy, gz = imu.angular_rate_mdps()
-            ept.send(struct.pack("<Iffffff", now_us, gx, gy, gz, ax, ay, az))
+            imu.__read_reg(0x22, buf, 12)
+            buf[-4:] = imu_us_buf
+            ept.send(buf)
+        # await asyncio.sleep_ms(1)
+        # machine.idle()
 
 
 def main():
@@ -98,7 +103,7 @@ def main():
     protocol.register(name="imu", backend=ImuChannel())
 
     while True:
-        machine.idle()
+        # machine.idle()
         if not frame_ready:
             now_us = refclk.now_us()
             if now_us - last_trig_us > 49000:

@@ -10,8 +10,8 @@ from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSDurabilityPolicy
 from sensor_msgs.msg import Image, Imu
 from std_msgs.msg import Int64
 
-MG_TO_MSS = 9.80665 / 1000
-MDPS_TO_RPS = math.pi / 180 / 1000
+ACC_TO_MSS = 0.244 * 9.80665 / 1000  # +/-8 g -> 0.244 mg/LSB
+GYRO_TO_RPS = 70 * math.pi / 180 / 1000  # 2000 dps -> 70 mdps/LSB
 
 with open('acc_cali.csv', 'r') as f:
     acc_offset = tuple(float(x) for x in f.readline().split(','))
@@ -41,15 +41,15 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
     img_waiting = False
 
     while True:
-        if text := cam.read_stdout():
-            print("cam:", text)
+        # if text := cam.read_stdout():
+        #    print("cam:", text)
         status = cam.read_status()
         if status.get("imu"):
             data = cam.channel_read("imu")
             # print(len(data))
-            imu_samples = list(struct.iter_unpack("<Iffffff", data))
+            imu_samples = list(struct.iter_unpack("<hhhhhhI", data))
             # print(len(imu_samples))
-            for imu_us, gx, gy, gz, ax, ay, az in imu_samples:
+            for gx, gy, gz, ax, ay, az, imu_us in imu_samples:
                 if prv_imu_us > 0 and imu_us - prv_imu_us > 5000:
                     print("imu ts gap", imu_us - prv_imu_us)
                 prv_imu_us = imu_us
@@ -57,12 +57,12 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
                 imu.header.frame_id = "body"
                 imu.header.stamp.sec = imu_us // 1_000_000
                 imu.header.stamp.nanosec = (imu_us % 1_000_000) * 1000
-                imu.linear_acceleration.x = (ax * MG_TO_MSS - acc_offset[0]) * acc_scale[0]
-                imu.linear_acceleration.y = (ay * MG_TO_MSS - acc_offset[1]) * acc_scale[1]
-                imu.linear_acceleration.z = (az * MG_TO_MSS - acc_offset[2]) * acc_scale[2]
-                imu.angular_velocity.x = gx * MDPS_TO_RPS
-                imu.angular_velocity.y = gy * MDPS_TO_RPS
-                imu.angular_velocity.z = gz * MDPS_TO_RPS
+                imu.linear_acceleration.x = (ax * ACC_TO_MSS - acc_offset[0]) * acc_scale[0]
+                imu.linear_acceleration.y = (ay * ACC_TO_MSS - acc_offset[1]) * acc_scale[1]
+                imu.linear_acceleration.z = (az * ACC_TO_MSS - acc_offset[2]) * acc_scale[2]
+                imu.angular_velocity.x = gx * GYRO_TO_RPS
+                imu.angular_velocity.y = gy * GYRO_TO_RPS
+                imu.angular_velocity.z = gz * GYRO_TO_RPS
                 imu_pub.publish(imu)
 
         if img_waiting and prv_imu_us > img_us:
