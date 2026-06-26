@@ -60,12 +60,12 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
                 imu_us = imu_us_5th
             else:
                 imu_us = imu_us_5th - imu_intl_us * 4
-            if last_imu_us > 0 and (imu_us - last_imu_us > 5000 or imu_us - last_imu_us < 4500):
+            if last_imu_us > 0 and (imu_us - last_imu_us > 4900 or imu_us - last_imu_us < 4500):
                 print("strange imu ts gap", len(imu_samples), imu_us - last_imu_us, imu_intl_us)
 
             if prv_num_samples >= 5 and len(imu_samples) >= 5:
                 est_imu_intl_us = round((imu_us_5th - prv_imu_us_5th) / prv_num_samples)
-                if est_imu_intl_us < 4500 or est_imu_intl_us > 5000:
+                if est_imu_intl_us < 4500 or est_imu_intl_us > 4900:
                     print("strange est imu intl", est_imu_intl_us, "us", prv_num_samples, prv_imu_us_5th, imu_us_5th)
                 else:
                     imu_intl_us = est_imu_intl_us

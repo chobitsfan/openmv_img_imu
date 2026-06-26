@@ -39,7 +39,7 @@ def read_fifo():
     # DIFF_FIFO is an 11-bit value representing unread 16-bit words
     words = (status1 | ((status2 & 0x07) << 8))
 
-    imu_us = time.ticks_diff(imu_fifo_ts, start_ts)  # before read fifo, it may raise another irq
+    imu_us = time.ticks_diff(imu_fifo_ts, start_ts)  # when we read fifo, new imu sample may come in, trigger another irq and update imu_fifo_ts
 
     # occasionally, DIFF_FIFO is not a full acc+gyro sample, floor to whole 6-word patterns
     nbytes = (words // 6) * 6 * 2
@@ -174,8 +174,8 @@ while True:
     if not frame_ready:
         now_ts = time.ticks_us()
         if time.ticks_diff(now_ts, img_ts) > 49000:
-            csi0.snapshot(image=img)
+            img = csi0.snapshot()
+            img_mv = memoryview(img)
             img_us = time.ticks_diff(now_ts, start_ts) + csi0.exposure_us() // 2
             img_ts = now_ts
-            img_mv = memoryview(img)
             frame_ready = True
