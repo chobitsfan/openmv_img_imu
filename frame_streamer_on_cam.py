@@ -18,6 +18,9 @@ img = csi0.snapshot()
 img_mv = memoryview(img)
 frame_ready = False
 img_us = 0
+imu_ready = False
+buf_fill = bytearray()
+buf_xfer = bytearray()
 
 
 class FrameChannel:
@@ -41,24 +44,26 @@ class FrameChannel:
 
 class ImuChannel:
     def size(self):
-        return len(imu_samples_xfer)
+        return len(buf_xfer)
 
     def poll(self):
-        global imu_samples_fill, imu_samples_xfer
-        if imu_samples_fill:
-            imu_samples_xfer = imu_samples_fill
-            imu_samples_fill = bytearray()
-            return True
-        else:
-            return False
+        return imu_ready
 
     def read(self, offset, size):
-        return imu_samples_xfer
+        global imu_ready
+        imu_ready = False
+        return buf_xfer
 
 
 def task_callback(src_addr, data):
-    global imu_samples_fill
-    imu_samples_fill += data
+    global buf_fill, buf_xfer, imu_ready
+    buf_fill += data
+    # print(len(buf_fill))
+    if len(buf_fill) >= 80 and not imu_ready:
+        buf_fill, buf_xfer = buf_xfer, buf_fill
+        imu_ready = True
+        buf_fill = bytearray()
+        # print("swap")
 
 
 @openamp.async_remote(task_callback)
@@ -66,29 +71,23 @@ async def task1(ept):
     import imu
     import refclk
     import machine
-    # import asyncio
+    import asyncio
 
-    drdy = False
     imu_us_buf = bytearray(4)
     buf = bytearray(16)
 
-    def imu_drdy_cb(pin):
-        nonlocal drdy
-        drdy = True
     imu.__write_reg(0x10, 0x5c)  # acc 208hz, 8g
     imu.__write_reg(0x11, 0x5c)  # gyro 208hz, 2000dps
-    imu.__write_reg(0x0B, 0x80)  # pulsed DataReady
+    # imu.__write_reg(0x0B, 0x80)  # pulsed DataReady
     imu.__write_reg(0x0D, 0x01)  # acc DataReady INT1
-    machine.Pin('P15_4', mode=machine.Pin.IN).irq(handler=imu_drdy_cb, trigger=machine.Pin.IRQ_RISING, hard=True)
+    int1 = machine.Pin('P15_4', mode=machine.Pin.IN)
     while True:
-        if drdy:
+        if int1.value() == 1 and (imu.__read_reg(0x1E) & 0x3) == 0x3:
             refclk.now_us(imu_us_buf)
-            drdy = False
             imu.__read_reg(0x22, buf, 12)
             buf[-4:] = imu_us_buf
             ept.send(buf)
-        # await asyncio.sleep_ms(1)
-        # machine.idle()
+            await asyncio.sleep_ms(1)
 
 
 def main():
@@ -103,15 +102,15 @@ def main():
     protocol.register(name="imu", backend=ImuChannel())
 
     while True:
-        # machine.idle()
         if not frame_ready:
             now_us = refclk.now_us()
             if now_us - last_trig_us > 49000:
-                csi0.snapshot(image=img)
+                img = csi0.snapshot()
+                img_mv = memoryview(img)
                 last_trig_us = now_us
                 img_us = now_us + csi0.exposure_us() // 2
-                img_mv = memoryview(img)
                 frame_ready = True
+                machine.idle()
 
 
 if __name__ == '__main__':

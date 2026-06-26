@@ -41,8 +41,8 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
     img_waiting = False
 
     while True:
-        # if text := cam.read_stdout():
-        #    print("cam:", text)
+        if text := cam.read_stdout():
+            print("cam:", text)
         status = cam.read_status()
         if status.get("imu"):
             data = cam.channel_read("imu")
@@ -50,7 +50,7 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
             imu_samples = list(struct.iter_unpack("<hhhhhhI", data))
             # print(len(imu_samples))
             for gx, gy, gz, ax, ay, az, imu_us in imu_samples:
-                if prv_imu_us > 0 and imu_us - prv_imu_us > 5000:
+                if prv_imu_us > 0 and (imu_us - prv_imu_us > 5000 or imu_us - prv_imu_us < 4500):
                     print("imu ts gap", imu_us - prv_imu_us)
                 prv_imu_us = imu_us
                 imu = Imu()
