@@ -50,8 +50,10 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
             imu_samples = list(struct.iter_unpack("<hhhhhhI", data))
             # print(len(imu_samples))
             for gx, gy, gz, ax, ay, az, imu_us in imu_samples:
-                if prv_imu_us > 0 and (imu_us - prv_imu_us > 5000 or imu_us - prv_imu_us < 4500):
+                if prv_imu_us > 0 and (imu_us - prv_imu_us > 4900 or imu_us - prv_imu_us < 4500):
                     print("imu ts gap", imu_us - prv_imu_us)
+                # else:
+                #    print(imu_us - prv_imu_us)
                 prv_imu_us = imu_us
                 imu = Imu()
                 imu.header.frame_id = "body"

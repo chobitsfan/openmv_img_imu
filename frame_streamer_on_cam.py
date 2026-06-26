@@ -75,15 +75,21 @@ async def task1(ept):
 
     imu_us_buf = bytearray(4)
     buf = bytearray(16)
+    drdy = False
 
+    def imu_drdy_cb(pin):
+        nonlocal drdy
+        refclk.now_us(imu_us_buf)
+        drdy = True
+
+    machine.Pin('P15_4', mode=machine.Pin.IN).irq(handler=imu_drdy_cb, trigger=machine.Pin.IRQ_RISING, hard=True)
     imu.__write_reg(0x10, 0x5c)  # acc 208hz, 8g
     imu.__write_reg(0x11, 0x5c)  # gyro 208hz, 2000dps
     # imu.__write_reg(0x0B, 0x80)  # pulsed DataReady
     imu.__write_reg(0x0D, 0x01)  # acc DataReady INT1
-    int1 = machine.Pin('P15_4', mode=machine.Pin.IN)
     while True:
-        if int1.value() == 1 and (imu.__read_reg(0x1E) & 0x3) == 0x3:
-            refclk.now_us(imu_us_buf)
+        if drdy and (imu.__read_reg(0x1E) & 0x3) == 0x3:
+            drdy = False
             imu.__read_reg(0x22, buf, 12)
             buf[-4:] = imu_us_buf
             ept.send(buf)
