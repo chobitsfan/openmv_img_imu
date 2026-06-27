@@ -67,7 +67,7 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
                 imu.angular_velocity.z = gz * GYRO_TO_RPS
                 imu_pub.publish(imu)
 
-        if img_waiting and prv_imu_us > img_us:
+        if img_waiting and prv_imu_us > img_us + 5000:
             img_waiting = False
             img_pub.publish(img)
 
@@ -94,6 +94,10 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
 #                cv2.imwrite(f"openmv_{img_i}.png", cv_img)
 #                img_i += 1
 
+            if img_waiting:
+                img_waiting = False
+                img_pub.publish(img)
+            
             img = Image()
             img.header.frame_id = "body"
             img.header.stamp.sec = img_us // 1000000
