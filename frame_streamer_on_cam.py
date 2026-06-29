@@ -19,8 +19,10 @@ img_mv = memoryview(img)
 frame_ready = False
 img_us = 0
 imu_ready = False
-buf_fill = bytearray()
-buf_xfer = bytearray()
+buf_fill = bytearray(256)
+buf_xfer = bytearray(256)
+fill_sz = 0
+xfer_sz = 0
 
 
 class FrameChannel:
@@ -44,24 +46,27 @@ class FrameChannel:
 
 class ImuChannel:
     def size(self):
-        return len(buf_xfer)
+        return xfer_sz
 
     def poll(self):
         return imu_ready
 
     def read(self, offset, size):
         global imu_ready
+        out = buf_xfer[:xfer_sz]
         imu_ready = False
-        return buf_xfer
+        return out
 
 
 def task_callback(src_addr, data):
     global buf_fill, buf_xfer, imu_ready
-    buf_fill += data
-    if len(buf_fill) >= 80 and not imu_ready:
+    buf_fill[fill_sz:fill_sz+16] = data
+    fill_sz += 16
+    if fill_sz >= 80 and not imu_ready:
         buf_fill, buf_xfer = buf_xfer, buf_fill
+        xfer_sz = fill_sz
+        fill_sz = 0
         imu_ready = True
-        buf_fill = bytearray()
 
 
 @openamp.async_remote(task_callback)
