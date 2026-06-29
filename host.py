@@ -26,7 +26,8 @@ t_offset_pub = node.create_publisher(Int64, "pico_pi_t_offset", QoSProfile(depth
 # The on-cam script above, stored as a string (or read from a file).
 SCRIPT = open("frame_streamer_on_cam.py").read()
 
-with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
+# with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
+with Camera("/dev/ttyACM0", ack=False, crc=False) as cam, open("openmv_ae3_215hz_acc_gyro.csv", "w") as log:
     print(cam.system_info())
     # Stop running script (if any)
     cam.stop()
@@ -76,6 +77,8 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
                     imu.angular_velocity.y = gy * GYRO_TO_RPS
                     imu.angular_velocity.z = gz * GYRO_TO_RPS
                     imu_pub.publish(imu)
+
+                    log.write(f"{imu_us/1000000},{imu.linear_acceleration.x:.10f},{imu.linear_acceleration.y:.10f},{imu.linear_acceleration.z:.10f},{imu_us/1000000},{imu.angular_velocity.x:.10f},{imu.angular_velocity.y:.10f},{imu.angular_velocity.z:.10f}\n")
 
             if img_waiting and prv_imu_us > img_us + 5000:
                 img_waiting = False
