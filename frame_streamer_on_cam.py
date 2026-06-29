@@ -3,6 +3,7 @@ import protocol
 import openamp
 import refclk
 import machine
+from micropython import const
 # import time
 
 imu_samples_fill = bytearray()
@@ -19,8 +20,11 @@ img_mv = memoryview(img)
 frame_ready = False
 img_us = 0
 imu_ready = False
-buf_fill = bytearray()
-buf_xfer = bytearray()
+_IMU_REC = const(16)              # bytes per IMU sample (6x int16 + uint32 timestamp)
+_IMU_BATCH = const(5 * _IMU_REC)   # flush a batch once this many bytes are buffered
+_IMU_MAX = const(64 * _IMU_REC)    # cap buffered bytes if the host stalls (bounds memory/GC)
+buf_fill = bytearray()    # writer-owned: task_callback appends here
+buf_xfer = bytearray()    # reader-owned while imu_ready is True
 
 
 class FrameChannel:
@@ -51,17 +55,32 @@ class ImuChannel:
 
     def read(self, offset, size):
         global imu_ready
+        # Capture the buffer reference *before* releasing imu_ready. While
+        # imu_ready is True the writer never touches buf_xfer, so this is a
+        # consistent snapshot that matches the preceding size() call. After we
+        # clear the flag the writer may swap in a *new* bytearray, but 'out'
+        # keeps the old object alive for the duration of the transfer.
+        out = buf_xfer
         imu_ready = False
-        return buf_xfer
+        return out
 
 
 def task_callback(src_addr, data):
     global buf_fill, buf_xfer, imu_ready
     buf_fill += data
-    if len(buf_fill) >= 80 and not imu_ready:
-        buf_fill, buf_xfer = buf_xfer, buf_fill
-        imu_ready = True
+    if imu_ready:
+        # Previous batch not yet drained by the host; keep accumulating but
+        # bound memory so a stalled consumer can't cause unbounded growth/GC.
+        if len(buf_fill) > _IMU_MAX:
+            del buf_fill[:-_IMU_BATCH]
+        return
+    if len(buf_fill) >= _IMU_BATCH:
+        # Hand off the filled buffer and start a fresh one. Allocating a new
+        # bytearray (instead of swapping the two) guarantees the object the
+        # reader is transmitting is never reused/overwritten by the writer.
+        buf_xfer = buf_fill
         buf_fill = bytearray()
+        imu_ready = True
 
 
 @openamp.async_remote(task_callback)
