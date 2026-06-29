@@ -58,12 +58,10 @@ class ImuChannel:
 def task_callback(src_addr, data):
     global buf_fill, buf_xfer, imu_ready
     buf_fill += data
-    # print(len(buf_fill))
     if len(buf_fill) >= 80 and not imu_ready:
         buf_fill, buf_xfer = buf_xfer, buf_fill
         imu_ready = True
         buf_fill = bytearray()
-        # print("swap")
 
 
 @openamp.async_remote(task_callback)
