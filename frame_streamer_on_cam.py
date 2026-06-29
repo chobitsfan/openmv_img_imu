@@ -76,13 +76,13 @@ async def task1(ept):
     import machine
     import asyncio
 
-    imu_us_buf = bytearray(4)
     buf = bytearray(16)
+    imu_us_mv = memoryview(buf)[-4:]
     drdy = False
 
     def imu_drdy_cb(pin):
         nonlocal drdy
-        refclk.now_us(imu_us_buf)
+        refclk.now_us(imu_us_mv)
         drdy = True
 
     machine.Pin('P15_4', mode=machine.Pin.IN).irq(handler=imu_drdy_cb, trigger=machine.Pin.IRQ_RISING, hard=True)
@@ -94,7 +94,6 @@ async def task1(ept):
         if drdy and (imu.__read_reg(0x1E) & 0x3) == 0x3:
             drdy = False
             imu.__read_reg(0x22, buf, 12)
-            buf[-4:] = imu_us_buf
             ept.send(buf)
             await asyncio.sleep_ms(1)
 
