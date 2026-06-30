@@ -19,8 +19,10 @@ img_mv = memoryview(img)
 frame_ready = False
 img_us = 0
 imu_ready = False
-buf_fill = bytearray(256)
-buf_xfer = bytearray(256)
+buf_a = bytearray(256)
+buf_b = bytearray(256)
+mv_fill = memoryview(buf_a)
+mv_xfer = memoryview(buf_b)
 fill_sz = 0
 xfer_sz = 0
 
@@ -52,18 +54,20 @@ class ImuChannel:
         return imu_ready
 
     def read(self, offset, size):
+        return mv_xfer[:xfer_sz]
+
+    def read_done(self):
         global imu_ready
-        out = buf_xfer[:xfer_sz]
         imu_ready = False
-        return out
 
 
 def task_callback(src_addr, data):
-    global buf_fill, buf_xfer, imu_ready
-    buf_fill[fill_sz:fill_sz+16] = data
-    fill_sz += 16
+    global mv_fill, mv_xfer, imu_ready, fill_sz, xfer_sz
+    if fill_sz <= len(mv_fill) - 16:
+        mv_fill[fill_sz:fill_sz+16] = data
+        fill_sz += 16
     if fill_sz >= 80 and not imu_ready:
-        buf_fill, buf_xfer = buf_xfer, buf_fill
+        mv_fill, mv_xfer = mv_xfer, mv_fill
         xfer_sz = fill_sz
         fill_sz = 0
         imu_ready = True
@@ -86,8 +90,8 @@ async def task1(ept):
         drdy = True
 
     machine.Pin('P15_4', mode=machine.Pin.IN).irq(handler=imu_drdy_cb, trigger=machine.Pin.IRQ_RISING, hard=True)
-    imu.__write_reg(0x10, 0x5c)  # acc 208hz, 8g
-    imu.__write_reg(0x11, 0x5c)  # gyro 208hz, 2000dps
+    # imu.__write_reg(0x10, 0x5c)  # acc 208hz, 8g
+    # imu.__write_reg(0x11, 0x5c)  # gyro 208hz, 2000dps
     # imu.__write_reg(0x0B, 0x80)  # pulsed DataReady
     imu.__write_reg(0x0D, 0x01)  # acc DataReady INT1
     while True:
