@@ -30,7 +30,7 @@ t_offset_pub = node.create_publisher(Int64, "pico_pi_t_offset", QoSProfile(depth
 # The on-cam script above, stored as a string (or read from a file).
 SCRIPT = open("frame_streamer_on_cam.py").read()
 
-with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
+with Camera("/dev/ttyACM0", ack=False, crc=False) as cam, open("openmv_ae3_acc_gyro.csv", "w") as imu_log:
     print(cam.system_info())
     # Stop running script (if any)
     cam.stop()
@@ -46,6 +46,7 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
     prv_imu_us_5th = 0
     frame_ch_id = None
     cnt = 0
+    log_cnt = 0
 
     while True:
         if text := cam.read_stdout():
@@ -85,6 +86,10 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
                 imu.angular_velocity.y = gy * GYRO_TO_RPS
                 imu.angular_velocity.z = gz * GYRO_TO_RPS
                 imu_pub.publish(imu)
+                imu_log.write(f"{imu_us},{imu.linear_acceleration.x:.15f},{imu.linear_acceleration.y:.15f},{imu.linear_acceleration.z:.15f},{imu_us},{imu.angular_velocity.x:.15f},{imu.angular_velocity.y:.15f},{imu.angular_velocity.z:.15f}\n")
+                log_cnt += 1
+                if log_cnt % 13000 == 0:
+                    print("sample cnt", log_cnt, "intl", imu_intl_us, "us")
                 imu_us += imu_intl_us
 
         if img_waiting and imu_us_5th > img_us:
@@ -127,3 +132,4 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
             img_waiting = True
 
 #    cv2.destroyAllWindows()
+print("bye")
