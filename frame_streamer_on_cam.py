@@ -30,6 +30,7 @@ TIMESTAMP2_REG = 0x42
 
 
 def read_fifo():
+    global imu_sz
     status1 = imu.__read_reg(FIFO_STATUS1)
     status2 = imu.__read_reg(FIFO_STATUS2)
 
@@ -43,12 +44,10 @@ def read_fifo():
 
     # occasionally, DIFF_FIFO is not a full acc+gyro sample, floor to whole 6-word patterns
     nbytes = (words // 6) * 6 * 2
-    data = bytearray(nbytes)
-    imu.__read_reg(0x3E, data)
+    imu.__read_reg(0x3E, imu_samples, nbytes)
 
-    data += imu_us.to_bytes(4, 'little')
-
-    return data
+    struct.pack_into("<I", imu_samples, nbytes, imu_us)
+    imu_sz = nbytes + 4
 
 
 def imu_fifo_cb(pin):
@@ -78,15 +77,17 @@ class FrameChannel:
 
 class ImuChannel:
     def size(self):
-        return len(imu_samples)
+        return imu_sz
 
     def poll(self):
         return imu_ready
 
-    def read(self, offset, size):
+    def readp(self, offset, size):
+        return imu_samples[:imu_sz]
+
+    def read_done(self):
         global imu_ready
         imu_ready = False
-        return imu_samples
 
 
 # Reset flow per AN4987
@@ -145,7 +146,9 @@ img = csi0.snapshot()
 img_mv = memoryview(img)
 frame_ready = False
 
-imu_samples = bytearray()
+imu_buf = bytearray(256)
+imu_samples = memoryview(imu_buf)
+imu_sz = 0
 imu_ready = False
 
 protocol.register(name="frame", backend=FrameChannel())
@@ -168,7 +171,7 @@ imu_us = 0
 
 while True:
     if imu_fifo_reach_th and (not imu_ready):
-        imu_samples = read_fifo()
+        read_fifo()
         imu_fifo_reach_th = False  # during fifo reading, incoming imu sample may trigger another irq. but we do not care
         imu_ready = True
     if not frame_ready:
