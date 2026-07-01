@@ -14,7 +14,7 @@ ACC_LSB_G   = 0.244 / 1000        # +/-8 g   -> 0.244 mg/LSB
 GYR_LSB_DPS = 70.0 / 1000         # 2000 dps -> 70 mdps/LSB
 ACC_TO_MSS = ACC_LSB_G * 9.80665
 GYRO_TO_RPS = GYR_LSB_DPS * math.pi / 180
-imu_intl_us = round(1_000_000 / 208)
+imu_intl_us = 1_000_000 // 208
 # imu_intl_us = 4680
 
 with open('acc_cali.csv', 'r') as f:
@@ -62,15 +62,16 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
                 imu_us = imu_us_5th
             else:
                 imu_us = imu_us_5th - imu_intl_us * 4
-            if last_imu_us > 0 and (imu_us - last_imu_us > 4900 or imu_us - last_imu_us < 4500):
-                print("strange imu ts gap", len(imu_samples), imu_us - last_imu_us, imu_intl_us)
+            diff_us = imu_us - last_imu_us
+            if last_imu_us > 0 and (diff_us > 4900 or diff_us < 4500):
+                print("? imu ts gap", diff_us, imu_intl_us, len(imu_samples), prv_num_samples, prv_imu_us_5th, imu_us_5th, log_cnt)
 
             if prv_num_samples >= 5 and len(imu_samples) >= 5:
-                est_imu_intl_us = round((imu_us_5th - prv_imu_us_5th) / prv_num_samples)
-                if est_imu_intl_us < 4500 or est_imu_intl_us > 4900:
-                    print("strange est imu intl", est_imu_intl_us, "us", prv_num_samples, prv_imu_us_5th, imu_us_5th)
-                else:
+                est_imu_intl_us = (imu_us_5th - prv_imu_us_5th) // prv_num_samples
+                if 4500 < est_imu_intl_us < 4900:
                     imu_intl_us = est_imu_intl_us
+                else:
+                    print("? est imu intl", est_imu_intl_us, prv_num_samples, prv_imu_us_5th, imu_us_5th, log_cnt)
             prv_num_samples = len(imu_samples)
             prv_imu_us_5th = imu_us_5th
 
@@ -89,7 +90,7 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
                 imu_pub.publish(imu)
 
                 # imu_log.write(f"{imu_us},{imu.linear_acceleration.x:.15f},{imu.linear_acceleration.y:.15f},{imu.linear_acceleration.z:.15f},{imu_us},{imu.angular_velocity.x:.15f},{imu.angular_velocity.y:.15f},{imu.angular_velocity.z:.15f}\n")
-                # log_cnt += 1
+                log_cnt += 1
                 # if log_cnt % 13000 == 0:
                 #    print("sample cnt", log_cnt, "intl", imu_intl_us, "us")
 

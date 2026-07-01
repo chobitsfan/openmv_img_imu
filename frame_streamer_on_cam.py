@@ -9,24 +9,24 @@ import micropython
 micropython.alloc_emergency_exception_buf(100)
 
 # --- LSM6DSM Register Addresses ---
-CTRL1_XL = 0x10  # Accel control register
-CTRL2_G = 0x11  # Gyro control register
-CTRL3_C = 0x12  # Control register 3
-CTRL10_C = 0x19  # Control register 10 (Timer enable)
-INT1_CTRL = 0x0D  # INT1 pad control
-FIFO_CTRL1 = 0x06  # FIFO watermark threshold FTH[7:0]
-FIFO_CTRL2 = 0x07  # FIFO timer/pedo enable + FTH[10:8]
-FIFO_CTRL3 = 0x08  # FIFO decimation for Accel/Gyro
-FIFO_CTRL4 = 0x09  # FIFO decimation for Dataset 3/4
-FIFO_CTRL5 = 0x0A  # FIFO ODR and Mode
-FIFO_STATUS1 = 0x3A  # FIFO status 1 (number of unread words LSB)
-FIFO_STATUS2 = 0x3B  # FIFO status 2 (number of unread words MSB + flags)
-FIFO_DATA_OUT_L = 0x3E  # FIFO data output LSB
-FIFO_DATA_OUT_H = 0x3F  # FIFO data output MSB
-WAKE_UP_DUR = 0x5C  # Wake up duration / High-res timer
-TIMESTAMP0_REG = 0x40
-TIMESTAMP1_REG = 0x41
-TIMESTAMP2_REG = 0x42
+CTRL1_XL = const(0x10)  # Accel control register
+CTRL2_G = const(0x11)  # Gyro control register
+CTRL3_C = const(0x12)  # Control register 3
+CTRL10_C = const(0x19)  # Control register 10 (Timer enable)
+INT1_CTRL = const(0x0D)  # INT1 pad control
+FIFO_CTRL1 = const(0x06)  # FIFO watermark threshold FTH[7:0]
+FIFO_CTRL2 = const(0x07)  # FIFO timer/pedo enable + FTH[10:8]
+FIFO_CTRL3 = const(0x08)  # FIFO decimation for Accel/Gyro
+FIFO_CTRL4 = const(0x09)  # FIFO decimation for Dataset 3/4
+FIFO_CTRL5 = const(0x0A)  # FIFO ODR and Mode
+FIFO_STATUS1 = const(0x3A)  # FIFO status 1 (number of unread words LSB)
+FIFO_STATUS2 = const(0x3B)  # FIFO status 2 (number of unread words MSB + flags)
+FIFO_DATA_OUT_L = const(0x3E)  # FIFO data output LSB
+FIFO_DATA_OUT_H = const(0x3F)  # FIFO data output MSB
+# WAKE_UP_DUR = 0x5C  # Wake up duration / High-res timer
+# TIMESTAMP0_REG = 0x40
+# TIMESTAMP1_REG = 0x41
+# TIMESTAMP2_REG = 0x42
 
 
 def read_fifo():
