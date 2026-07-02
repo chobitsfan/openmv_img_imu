@@ -63,7 +63,7 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam, open("openmv_ae3_215hz
                             print("avg imu intl", imu_us_sum // imu_sample_cnt)
                             imu_us_sum = 0
                             imu_sample_cnt = 0
-                        if diff_us > 4700 or diff_us < 4600:
+                        if diff_us > 4800 or diff_us < 4600:
                             print("imu ts gap", imu_us - prv_imu_us)
                     prv_imu_us = imu_us
                     imu = Imu()

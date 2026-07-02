@@ -53,7 +53,7 @@ class ImuChannel:
     def poll(self):
         return imu_ready
 
-    def read(self, offset, size):
+    def readp(self, offset, size):
         return mv_xfer[:xfer_sz]
 
     def read_done(self):
@@ -80,25 +80,24 @@ async def task1(ept):
     import machine
     import asyncio
 
-    imu_us_buf = bytearray(4)
     buf = bytearray(16)
+    imu_us_mv = memoryview(buf)[-4:]
     drdy = False
 
     def imu_drdy_cb(pin):
         nonlocal drdy
-        refclk.now_us(imu_us_buf)
+        refclk.now_us(imu_us_mv)
         drdy = True
 
     machine.Pin('P15_4', mode=machine.Pin.IN).irq(handler=imu_drdy_cb, trigger=machine.Pin.IRQ_RISING, hard=True)
-    # imu.__write_reg(0x10, 0x5c)  # acc 208hz, 8g
-    # imu.__write_reg(0x11, 0x5c)  # gyro 208hz, 2000dps
+    imu.__write_reg(0x10, 0x5c)  # acc 208hz, 8g
+    imu.__write_reg(0x11, 0x5c)  # gyro 208hz, 2000dps
     # imu.__write_reg(0x0B, 0x80)  # pulsed DataReady
     imu.__write_reg(0x0D, 0x01)  # acc DataReady INT1
     while True:
         if drdy and (imu.__read_reg(0x1E) & 0x3) == 0x3:
             drdy = False
             imu.__read_reg(0x22, buf, 12)
-            buf[-4:] = imu_us_buf
             ept.send(buf)
             await asyncio.sleep_ms(1)
 
