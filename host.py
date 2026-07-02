@@ -96,7 +96,7 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
 
                 imu_us += imu_intl_us
 
-        if img_waiting and last_imu_us > img_us + 10000:
+        if img_waiting and last_imu_us > img_us + 15000:
             img_waiting = False
             img_pub.publish(img)
 
