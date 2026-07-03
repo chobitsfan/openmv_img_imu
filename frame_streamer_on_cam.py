@@ -5,9 +5,6 @@ import refclk
 import machine
 # import time
 
-imu_samples_fill = bytearray()
-imu_samples_xfer = bytearray()
-
 csi0 = csi.CSI()
 csi0.reset()
 csi0.pixformat(csi.GRAYSCALE)
@@ -116,7 +113,7 @@ def main():
     while True:
         if not frame_ready:
             now_us = refclk.now_us()
-            if now_us - last_trig_us > 49000:
+            if now_us - last_trig_us > 39000:
                 img = csi0.snapshot()
                 img_mv = memoryview(img)
                 last_trig_us = now_us
