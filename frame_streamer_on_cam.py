@@ -92,11 +92,11 @@ async def task1(ept):
     # imu.__write_reg(0x0B, 0x80)  # pulsed DataReady
     imu.__write_reg(0x0D, 0x01)  # acc DataReady INT1
     while True:
+        await asyncio.sleep_ms(1)
         if drdy and (imu.__read_reg(0x1E) & 0x3) == 0x3:
             drdy = False
             imu.__read_reg(0x22, buf, 12)
             ept.send(buf)
-            await asyncio.sleep_ms(1)
 
 
 def main():
@@ -111,6 +111,7 @@ def main():
     protocol.register(name="imu", backend=ImuChannel())
 
     while True:
+        machine.idle()
         if not frame_ready:
             now_us = refclk.now_us()
             if now_us - last_trig_us > 39000:
@@ -119,7 +120,6 @@ def main():
                 last_trig_us = now_us
                 img_us = now_us + csi0.exposure_us() // 2
                 frame_ready = True
-                machine.idle()
 
 
 if __name__ == '__main__':
