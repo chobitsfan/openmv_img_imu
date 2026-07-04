@@ -22,6 +22,8 @@ mv_fill = memoryview(buf_a)
 mv_xfer = memoryview(buf_b)
 fill_sz = 0
 xfer_sz = 0
+cnt = 0
+led = machine.LED("LED_BLUE")
 
 
 class FrameChannel:
@@ -36,11 +38,8 @@ class FrameChannel:
 
     def readp(self, offset, size):
         global frame_ready
-        end = offset + size
-        chunk = img_mv[offset:end]
-        if end >= len(img_mv):
-            frame_ready = False
-        return chunk
+        frame_ready = False
+        return img_mv
 
 
 class ImuChannel:
@@ -59,7 +58,7 @@ class ImuChannel:
 
 
 def task_callback(src_addr, data):
-    global mv_fill, mv_xfer, imu_ready, fill_sz, xfer_sz
+    global mv_fill, mv_xfer, imu_ready, fill_sz, xfer_sz, cnt
     if fill_sz <= len(mv_fill) - 16:
         mv_fill[fill_sz:fill_sz+16] = data
         fill_sz += 16
@@ -68,6 +67,11 @@ def task_callback(src_addr, data):
         xfer_sz = fill_sz
         fill_sz = 0
         imu_ready = True
+    cnt += 1
+    if cnt > 100:
+        cnt = 0
+        led.toggle()
+
 
 
 @openamp.async_remote(task_callback)
@@ -87,9 +91,9 @@ async def task1(ept):
         drdy = True
 
     machine.Pin('P15_4', mode=machine.Pin.IN).irq(handler=imu_drdy_cb, trigger=machine.Pin.IRQ_RISING, hard=True)
-    imu.__write_reg(0x10, 0x5c)  # acc 208hz, 8g
-    imu.__write_reg(0x11, 0x5c)  # gyro 208hz, 2000dps
-    # imu.__write_reg(0x0B, 0x80)  # pulsed DataReady
+    # imu.__write_reg(0x10, 0x5c)  # acc 208hz, 8g
+    # imu.__write_reg(0x11, 0x5c)  # gyro 208hz, 2000dps
+    imu.__write_reg(0x0B, 0x80)  # pulsed DataReady
     imu.__write_reg(0x0D, 0x01)  # acc DataReady INT1
     while True:
         await asyncio.sleep_ms(1)
@@ -106,26 +110,23 @@ def main():
     rproc.start()
 
     last_trig_us = 0
-    cnt = 0
-    led = machine.LED("LED_BLUE")
 
     protocol.register(name="frame", backend=FrameChannel())
     protocol.register(name="imu", backend=ImuChannel())
 
     while True:
         machine.idle()
-        if not frame_ready:
-            now_us = refclk.now_us()
-            if now_us - last_trig_us > 39000:
+        now_us = refclk.now_us()
+        if now_us - last_trig_us > 39000:
+            try:
                 img = csi0.snapshot()
-                img_mv = memoryview(img)
-                last_trig_us = now_us
-                img_us = now_us + csi0.exposure_us() // 2
-                frame_ready = True
-        cnt += 1
-        if cnt > 50:
-            cnt = 0
-            led.toggle()
+            except RuntimeError:
+                print("snapshot failed")
+                continue
+            img_mv = memoryview(img)
+            last_trig_us = now_us
+            img_us = now_us + csi0.exposure_us() // 2
+            frame_ready = True
 
 
 if __name__ == '__main__':
