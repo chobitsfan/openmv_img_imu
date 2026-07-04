@@ -106,6 +106,8 @@ def main():
     rproc.start()
 
     last_trig_us = 0
+    cnt = 0
+    led = machine.LED("LED_BLUE")
 
     protocol.register(name="frame", backend=FrameChannel())
     protocol.register(name="imu", backend=ImuChannel())
@@ -120,6 +122,10 @@ def main():
                 last_trig_us = now_us
                 img_us = now_us + csi0.exposure_us() // 2
                 frame_ready = True
+        cnt += 1
+        if cnt > 50:
+            cnt = 0
+            led.toggle()
 
 
 if __name__ == '__main__':
