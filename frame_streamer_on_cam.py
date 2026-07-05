@@ -3,6 +3,7 @@ import protocol
 import openamp
 import refclk
 import machine
+import struct
 # import time
 
 csi0 = csi.CSI()
@@ -23,7 +24,7 @@ mv_xfer = memoryview(buf_b)
 fill_sz = 0
 xfer_sz = 0
 cnt = 0
-led = machine.LED("LED_BLUE")
+imu_intl_us = 0
 
 
 class FrameChannel:
@@ -58,20 +59,20 @@ class ImuChannel:
 
 
 def task_callback(src_addr, data):
-    global mv_fill, mv_xfer, imu_ready, fill_sz, xfer_sz, cnt
+    global mv_fill, mv_xfer, imu_ready, fill_sz, xfer_sz, cnt, imu_intl_us
     if fill_sz <= len(mv_fill) - 16:
         mv_fill[fill_sz:fill_sz+16] = data
         fill_sz += 16
     if fill_sz >= 80 and not imu_ready:
+        if imu_intl_us == 0:
+            ts1 = struct.unpack_from("<I", mv_fill, 12)[0]
+            ts5 = struct.unpack_from("<I", mv_fill, 76)[0]
+            imu_intl_us = (ts5 - ts1) // 4
+            print("imu_intl_us", imu_intl_us)
         mv_fill, mv_xfer = mv_xfer, mv_fill
         xfer_sz = fill_sz
         fill_sz = 0
         imu_ready = True
-    cnt += 1
-    if cnt > 100:
-        cnt = 0
-        led.toggle()
-
 
 
 @openamp.async_remote(task_callback)
