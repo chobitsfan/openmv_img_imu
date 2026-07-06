@@ -25,6 +25,7 @@ fill_sz = 0
 xfer_sz = 0
 cnt = 0
 imu_intl_us = 0
+trig_us = 0
 
 
 class FrameChannel:
@@ -59,7 +60,7 @@ class ImuChannel:
 
 
 def task_callback(src_addr, data):
-    global mv_fill, mv_xfer, imu_ready, fill_sz, xfer_sz, cnt, imu_intl_us
+    global mv_fill, mv_xfer, imu_ready, fill_sz, xfer_sz, cnt, imu_intl_us, trig_us
     if fill_sz <= len(mv_fill) - 16:
         mv_fill[fill_sz:fill_sz+16] = data
         fill_sz += 16
@@ -73,6 +74,12 @@ def task_callback(src_addr, data):
         xfer_sz = fill_sz
         fill_sz = 0
         imu_ready = True
+    cnt += 1
+    if cnt == 10:
+        cnt = 0
+        if imu_intl_us:
+            kf_us = struct.unpack_from("<I", data, 12)[0]
+            trig_us = kf_us + 10 * imu_intl_us - csi0.exposure_us() // 2
 
 
 @openamp.async_remote(task_callback)
@@ -105,27 +112,24 @@ async def task1(ept):
 
 
 def main():
-    global img, img_us, img_mv, frame_ready
+    global img, img_us, img_mv, frame_ready, trig_us
     refclk.enable()
     rproc = openamp.RemoteProc(0x80320000)
     rproc.start()
-
-    last_trig_us = 0
 
     protocol.register(name="frame", backend=FrameChannel())
     protocol.register(name="imu", backend=ImuChannel())
 
     while True:
-        machine.idle()
         now_us = refclk.now_us()
-        if now_us - last_trig_us > 39000:
+        if trig_us >= now_us:
             try:
                 img = csi0.snapshot()
             except RuntimeError:
                 print("snapshot failed")
                 continue
+            trig_us = 0
             img_mv = memoryview(img)
-            last_trig_us = now_us
             img_us = now_us + csi0.exposure_us() // 2
             frame_ready = True
 
