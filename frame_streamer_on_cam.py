@@ -121,9 +121,8 @@ def main():
     protocol.register(name="imu", backend=ImuChannel())
 
     while True:
-        machine.idle()
         now_us = refclk.now_us()
-        if now_us >= trig_us:
+        if trig_us and now_us >= trig_us:
             try:
                 img = csi0.snapshot()
             except RuntimeError:
