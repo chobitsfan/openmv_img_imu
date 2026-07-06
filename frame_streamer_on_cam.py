@@ -123,12 +123,12 @@ def main():
     while True:
         now_us = refclk.now_us()
         if trig_us and now_us >= trig_us:
+            trig_us = 0
             try:
                 img = csi0.snapshot()
             except RuntimeError:
                 print("snapshot failed")
                 continue
-            trig_us = 0
             img_mv = memoryview(img)
             img_us = now_us + csi0.exposure_us() // 2
             frame_ready = True
