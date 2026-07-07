@@ -26,6 +26,9 @@ xfer_sz = 0
 cnt = 0
 imu_intl_us = 0
 trig_us = 0
+ts0_us = 0
+n_est = 0
+EST_WIN = 256  # intervals to average for imu_intl_us (~1.2s @ 215Hz)
 
 
 class FrameChannel:
@@ -60,20 +63,26 @@ class ImuChannel:
 
 
 def task_callback(src_addr, data):
-    global mv_fill, mv_xfer, imu_ready, fill_sz, xfer_sz, cnt, imu_intl_us, trig_us
+    global mv_fill, mv_xfer, imu_ready, fill_sz, xfer_sz, cnt, imu_intl_us, trig_us, ts0_us, n_est
     if fill_sz <= len(mv_fill) - 16:
         mv_fill[fill_sz:fill_sz+16] = data
         fill_sz += 16
     if fill_sz >= 80 and not imu_ready:
-        if imu_intl_us == 0:
-            ts1 = struct.unpack_from("<I", mv_fill, 12)[0]
-            ts5 = struct.unpack_from("<I", mv_fill, 76)[0]
-            imu_intl_us = (ts5 - ts1) // 4
-            print("imu_intl_us", imu_intl_us)
         mv_fill, mv_xfer = mv_xfer, mv_fill
         xfer_sz = fill_sz
         fill_sz = 0
         imu_ready = True
+    # Average the IMU interval over a wide window (once) so the 10-interval
+    # prediction lands on the true keyframe instead of ~65us early.
+    if imu_intl_us == 0:
+        ts = struct.unpack_from("<I", data, 12)[0]
+        if ts0_us == 0:
+            ts0_us = ts
+        else:
+            n_est += 1
+            if n_est == EST_WIN:
+                imu_intl_us = (ts - ts0_us) // EST_WIN
+                print("imu_intl_us", imu_intl_us)
     cnt += 1
     if cnt == 10:
         cnt = 0
