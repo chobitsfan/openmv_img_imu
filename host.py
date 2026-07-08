@@ -12,6 +12,7 @@ from std_msgs.msg import Int64
 
 ACC_TO_MSS = 0.244 * 9.80665 / 1000  # +/-8 g -> 0.244 mg/LSB
 GYRO_TO_RPS = 70 * math.pi / 180 / 1000  # 2000 dps -> 70 mdps/LSB
+MARGIN_US = 20000
 
 with open('acc_cali.csv', 'r') as f:
     acc_offset = tuple(float(x) for x in f.readline().split(','))
@@ -41,7 +42,7 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
     prv_imu_us = 0
     img = None
     imu_us_sum = 0
-    imu_sample_cnt = 0
+    # imu_sample_cnt = 0
     img_us = 0
 
     try:
@@ -58,11 +59,11 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
                     if prv_imu_us > 0:
                         diff_us = imu_us - prv_imu_us
                         imu_us_sum += diff_us
-                        imu_sample_cnt += 1
-                        if imu_sample_cnt > 600:
-                            print("avg imu intl", imu_us_sum // imu_sample_cnt)
-                            imu_us_sum = 0
-                            imu_sample_cnt = 0
+                        # imu_sample_cnt += 1
+                        # if imu_sample_cnt > 600:
+                        #    print("avg imu intl", imu_us_sum // imu_sample_cnt)
+                        #    imu_us_sum = 0
+                        #    imu_sample_cnt = 0
                         if diff_us > 4800 or diff_us < 4600:
                             print("imu ts gap", imu_us - prv_imu_us)
                     prv_imu_us = imu_us
@@ -80,7 +81,7 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
 
                     # log.write(f"{imu_us},{imu.linear_acceleration.x:.10f},{imu.linear_acceleration.y:.10f},{imu.linear_acceleration.z:.10f},{imu_us},{imu.angular_velocity.x:.10f},{imu.angular_velocity.y:.10f},{imu.angular_velocity.z:.10f}\n")
 
-            if img is not None and prv_imu_us > img_us:
+            if img is not None and prv_imu_us > img_us + MARGIN_US:
                 img_pub.publish(img)
                 img = None
 
@@ -120,7 +121,7 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
                 img.encoding = "mono8"
                 img.step = w
                 img.data = data
-                if prv_imu_us > img_us:
+                if prv_imu_us > img_us + MARGIN_US:
                     img_pub.publish(img)
                     img = None
 
