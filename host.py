@@ -27,7 +27,7 @@ t_offset_pub = node.create_publisher(Int64, "pico_pi_t_offset", QoSProfile(depth
 SCRIPT = open("frame_streamer_on_cam.py").read()
 
 with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
-# with Camera("/dev/ttyACM0", ack=False, crc=False) as cam, open("openmv_ae3_215hz_acc_gyro.csv", "w") as log:
+# with Camera("/dev/ttyACM0", ack=False, crc=False) as cam, open("openmv_ae3_acc_gyro.csv", "w") as log:
     print(cam.system_info())
     # Stop running script (if any)
     cam.stop()
@@ -39,7 +39,7 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
     frame_ch_id = None
     cnt = 0
     prv_imu_us = 0
-    img_waiting = False
+    img = None
     imu_us_sum = 0
     imu_sample_cnt = 0
     img_us = 0
@@ -80,9 +80,9 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
 
                     # log.write(f"{imu_us},{imu.linear_acceleration.x:.10f},{imu.linear_acceleration.y:.10f},{imu.linear_acceleration.z:.10f},{imu_us},{imu.angular_velocity.x:.10f},{imu.angular_velocity.y:.10f},{imu.angular_velocity.z:.10f}\n")
 
-            if img_waiting and prv_imu_us > img_us + 15000:
-                img_waiting = False
+            if img is not None and prv_imu_us > img_us:
                 img_pub.publish(img)
+                img = None
 
             if status.get("frame"):
                 if frame_ch_id is None:
@@ -107,8 +107,7 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
     #                cv2.imwrite(f"openmv_{img_i}.png", cv_img)
     #                img_i += 1
 
-                if img_waiting:
-                    img_waiting = False
+                if img is not None: # very unlikely
                     img_pub.publish(img)
 
                 img = Image()
@@ -121,7 +120,10 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
                 img.encoding = "mono8"
                 img.step = w
                 img.data = data
-                img_waiting = True
+                if prv_imu_us > img_us:
+                    img_pub.publish(img)
+                    img = None
+
     except KeyboardInterrupt:
         cam.reset()
 
