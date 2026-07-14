@@ -4,6 +4,7 @@ import openamp
 import refclk
 import machine
 import struct
+from micropython import const
 # import time
 
 csi0 = csi.CSI()
@@ -28,7 +29,8 @@ imu_intl_us = 0
 trig_us = 0
 ts0_us = 0
 n_est = 0
-EST_WIN = 256  # intervals to average for imu_intl_us (~1.2s @ 215Hz)
+EST_WIN = const(256)  # intervals to average for imu_intl_us (~1.2s @ 215Hz)
+FRAME_INTL = const(7)
 
 
 class FrameChannel:
@@ -84,11 +86,11 @@ def task_callback(src_addr, data):
                 imu_intl_us = (ts - ts0_us) // EST_WIN
                 print("imu_intl_us", imu_intl_us)
     cnt += 1
-    if cnt == 10:
+    if cnt == FRAME_INTL:
         cnt = 0
         if imu_intl_us:
             kf_us = struct.unpack_from("<I", data, 12)[0]
-            trig_us = kf_us + 10 * imu_intl_us - csi0.exposure_us() // 2
+            trig_us = kf_us + FRAME_INTL * imu_intl_us - csi0.exposure_us() // 2
 
 
 @openamp.async_remote(task_callback)
