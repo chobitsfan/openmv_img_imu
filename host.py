@@ -24,7 +24,7 @@ with open(sys.argv[1], 'r') as f:
 
 rclpy.init()
 node = rclpy.create_node('openmv')
-img_pub = node.create_publisher(Image, "mono_left", QoSProfile(depth=1, reliability=QoSReliabilityPolicy.BEST_EFFORT))
+img_pub = node.create_publisher(Image, "mono_left", QoSProfile(depth=2, reliability=QoSReliabilityPolicy.BEST_EFFORT))
 imu_pub = node.create_publisher(Imu, "imu", 400)
 t_offset_pub = node.create_publisher(Int64, "pico_pi_t_offset", QoSProfile(depth=1, reliability=QoSReliabilityPolicy.BEST_EFFORT))  # I use pico in the beginning
 
