@@ -2,6 +2,7 @@ import time
 import rclpy
 import struct
 import math
+import sys
 # import cv2
 # import numpy as np
 from openmv.camera import Camera
@@ -14,7 +15,10 @@ ACC_TO_MSS = 0.244 * 9.80665 / 1000  # +/-8 g -> 0.244 mg/LSB
 GYRO_TO_RPS = 70 * math.pi / 180 / 1000  # 2000 dps -> 70 mdps/LSB
 MARGIN_US = 20000
 
-with open('acc_cali.csv', 'r') as f:
+if len(sys.argv) <= 1:
+    print("need acc cali file")
+    sys.exit()
+with open(sys.argv[1], 'r') as f:
     acc_offset = tuple(float(x) for x in f.readline().split(','))
     acc_scale = tuple(float(x) for x in f.readline().split(','))
 
