@@ -11,15 +11,16 @@ csi0 = csi.CSI()
 csi0.reset()
 csi0.pixformat(csi.GRAYSCALE)
 csi0.framesize(csi.VGA)
-# csi0.framerate(20)
+# Kwabena: There’s no frame rate in triggered mode; the frame rate is how fast you can trigger. The framerate() option itself does, though, set an upper limit
+csi0.framerate(50)
 csi0.ioctl(csi.IOCTL_SET_TRIGGERED_MODE, True)
 img = csi0.snapshot()
 img_mv = memoryview(img)
 frame_ready = False
 img_us = 0
 imu_ready = False
-buf_a = bytearray(320)
-buf_b = bytearray(320)
+buf_a = bytearray(480)
+buf_b = bytearray(480)
 mv_fill = memoryview(buf_a)
 mv_xfer = memoryview(buf_b)
 fill_sz = 0
@@ -29,6 +30,7 @@ imu_intl_us = 0
 trig_us = 0
 ts0_us = 0
 n_est = 0
+exposure_us = 0
 EST_WIN = const(256)  # intervals to average for imu_intl_us (~1.2s @ 215Hz)
 FRAME_INTL = const(7)
 
@@ -65,7 +67,7 @@ class ImuChannel:
 
 
 def task_callback(src_addr, data):
-    global mv_fill, mv_xfer, imu_ready, fill_sz, xfer_sz, cnt, imu_intl_us, trig_us, ts0_us, n_est
+    global mv_fill, mv_xfer, imu_ready, fill_sz, xfer_sz, cnt, imu_intl_us, trig_us, ts0_us, n_est, exposure_us
     if fill_sz <= len(mv_fill) - 16:
         mv_fill[fill_sz:fill_sz+16] = data
         fill_sz += 16
@@ -90,7 +92,9 @@ def task_callback(src_addr, data):
         cnt = 0
         if imu_intl_us:
             kf_us = struct.unpack_from("<I", data, 12)[0]
-            trig_us = kf_us + FRAME_INTL * imu_intl_us - csi0.exposure_us() // 2
+            # Kwabena: AEC will update its internal settings based on what is seen in that image unless you force manual control
+            exposure_us = csi0.exposure_us()
+            trig_us = kf_us + FRAME_INTL * imu_intl_us - exposure_us // 2
 
 
 @openamp.async_remote(task_callback)
@@ -141,7 +145,7 @@ def main():
                 print("snapshot failed")
                 continue
             img_mv = memoryview(img)
-            img_us = now_us + csi0.exposure_us() // 2
+            img_us = now_us + exposure_us // 2
             frame_ready = True
 
 
