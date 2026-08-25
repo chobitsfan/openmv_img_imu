@@ -11,9 +11,9 @@ csi0 = csi.CSI()
 csi0.reset()
 csi0.pixformat(csi.GRAYSCALE)
 csi0.framesize(csi.VGA)
-# Kwabena: There’s no frame rate in triggered mode; the frame rate is how fast you can trigger. The framerate() option itself does, though, set an upper limit
-csi0.framerate(50)
 csi0.ioctl(csi.IOCTL_SET_TRIGGERED_MODE, True)
+# Kwabena: There’s no frame rate in triggered mode; the frame rate is how fast you can trigger. The framerate() option itself does, though, set an upper limit
+# csi0.framerate(50)
 img = csi0.snapshot()
 img_mv = memoryview(img)
 frame_ready = False
