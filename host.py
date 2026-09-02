@@ -13,7 +13,6 @@ from std_msgs.msg import Int64
 
 ACC_TO_MSS = 0.244 * 9.80665 / 1000  # +/-8 g -> 0.244 mg/LSB
 GYRO_TO_RPS = 70 * math.pi / 180 / 1000  # 2000 dps -> 70 mdps/LSB
-MARGIN_US = 20000
 
 if len(sys.argv) <= 1:
     print("need acc cali file")
@@ -34,12 +33,11 @@ img = Image()
 img.header.frame_id = "body"
 img.is_bigendian = 0
 img.encoding = "mono8"
-img_rdy = False
 
 # The on-cam script above, stored as a string (or read from a file).
 SCRIPT = open("frame_streamer_on_cam.py").read()
 
-with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
+with Camera("/dev/ttyACM0", ack=False, crc=False) as cam, open("img_ts.csv", "w") as img_log, open("imu_ts.csv", "w") as imu_log:
 # with Camera("/dev/ttyACM0", ack=False, crc=False) as cam, open("openmv_ae3_acc_gyro.csv", "w") as log:
     print(cam.system_info())
     # Stop running script (if any)
@@ -89,10 +87,7 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
                     imu_pub.publish(imu)
 
                     # log.write(f"{imu_us},{imu.linear_acceleration.x:.10f},{imu.linear_acceleration.y:.10f},{imu.linear_acceleration.z:.10f},{imu_us},{imu.angular_velocity.x:.10f},{imu.angular_velocity.y:.10f},{imu.angular_velocity.z:.10f}\n")
-
-            if img_rdy and prv_imu_us > img_us + MARGIN_US:
-                img_pub.publish(img)
-                img_rdy = False
+                    imu_log.write(f"{imu_us}\n")
 
             if status.get("frame"):
                 if frame_ch_id is None:
@@ -117,21 +112,15 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
     #                cv2.imwrite(f"openmv_{img_i}.png", cv_img)
     #                img_i += 1
 
-                if img_rdy: # very unlikely
-                    img_pub.publish(img)
-                    img_rdy = False
-
                 img.header.stamp.sec = img_us // 1000000
                 img.header.stamp.nanosec = (img_us % 1000000) * 1000
                 img.width = w
                 img.height = h
                 img.step = w
                 img.data = data
-                if prv_imu_us > img_us + MARGIN_US:
-                    img_pub.publish(img)
-                    img_rdy = False
-                else:
-                    img_rdy = True
+                img_pub.publish(img)
+
+                img_log.write(f"{img_us}\n")
 
     except KeyboardInterrupt:
         cam.reset()
