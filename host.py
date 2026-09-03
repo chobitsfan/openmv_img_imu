@@ -4,6 +4,7 @@ import struct
 import math
 import sys
 import multiprocessing as mp
+from multiprocessing import shared_memory
 import my_img_pub
 # import cv2
 # import numpy as np
@@ -24,10 +25,19 @@ def main():
         acc_offset = tuple(float(x) for x in f.readline().split(','))
         acc_scale = tuple(float(x) for x in f.readline().split(','))
 
-    recv_conn, send_conn = mp.Pipe(duplex=False)
-    proc = mp.Process(target=my_img_pub.run, args=(recv_conn,))
+    # Single-slot shared-memory handoff: the read loop must never block on the
+    # publisher, so a frame arriving while the child is still copying is dropped.
+    init_q = mp.Queue()
+    frame_lock = mp.Lock()
+    frame_ready = mp.Event()
+    stop = mp.Event()
+    frame_seq = mp.Value('L', 0, lock=False)   # guarded by frame_lock
+    frame_ts = mp.Value('Q', 0, lock=False)
+    proc = mp.Process(target=my_img_pub.run,
+                      args=(init_q, frame_lock, frame_ready, stop, frame_seq, frame_ts))
     proc.start()
-    recv_conn.close()
+    shm = None
+    n_collide = 0
 
     rclpy.init()
     node = rclpy.create_node('openmv')
@@ -117,8 +127,20 @@ def main():
         #                cv2.imwrite(f"openmv_{img_i}.png", cv_img)
         #                img_i += 1
 
-                    send_conn.send(img_us)
-                    send_conn.send_bytes(data)
+                    if shm is None:
+                        shm = shared_memory.SharedMemory(create=True, size=len(data))
+                        init_q.put((shm.name, h, w, len(data)))
+                    if frame_lock.acquire(block=False):
+                        try:
+                            shm.buf[:] = data
+                            frame_ts.value = img_us
+                            frame_seq.value += 1
+                        finally:
+                            frame_lock.release()
+                        frame_ready.set()
+                    else:
+                        n_collide += 1  # child mid-copy; drop. Frames lost while the
+                        # child is stalled are overwritten instead, and counted there.
 
                     img_log.write(f"{img_us}\n")
 
@@ -127,9 +149,14 @@ def main():
 
     #    cv2.destroyAllWindows()
 
-    send_conn.close()
+    stop.set()
+    frame_ready.set()
     proc.join()
+    if shm is not None:
+        shm.close()
+        shm.unlink()
 
+    print("frames dropped on slot collision:", n_collide)
     print("bye")
 
 if __name__ == "__main__":
