@@ -3,130 +3,135 @@ import rclpy
 import struct
 import math
 import sys
+import multiprocessing as mp
+import my_img_pub
 # import cv2
 # import numpy as np
 from openmv.camera import Camera
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSDurabilityPolicy
-from sensor_msgs.msg import Image, Imu
+from sensor_msgs.msg import Imu
 from std_msgs.msg import Int64
 
 ACC_TO_MSS = 0.244 * 9.80665 / 1000  # +/-8 g -> 0.244 mg/LSB
 GYRO_TO_RPS = 70 * math.pi / 180 / 1000  # 2000 dps -> 70 mdps/LSB
 
-if len(sys.argv) <= 1:
-    print("need acc cali file")
-    sys.exit()
-with open(sys.argv[1], 'r') as f:
-    acc_offset = tuple(float(x) for x in f.readline().split(','))
-    acc_scale = tuple(float(x) for x in f.readline().split(','))
+def main():
+    if len(sys.argv) <= 1:
+        print("need acc cali file")
+        sys.exit()
+    with open(sys.argv[1], 'r') as f:
+        acc_offset = tuple(float(x) for x in f.readline().split(','))
+        acc_scale = tuple(float(x) for x in f.readline().split(','))
 
-rclpy.init()
-node = rclpy.create_node('openmv')
-img_pub = node.create_publisher(Image, "mono_left", QoSProfile(depth=2, reliability=QoSReliabilityPolicy.BEST_EFFORT))
-imu_pub = node.create_publisher(Imu, "imu", 400)
-t_offset_pub = node.create_publisher(Int64, "pico_pi_t_offset", QoSProfile(depth=1, reliability=QoSReliabilityPolicy.BEST_EFFORT))  # I use pico in the beginning
+    recv_conn, send_conn = mp.Pipe(duplex=False)
+    proc = mp.Process(target=my_img_pub.run, args=(recv_conn,))
+    proc.start()
+    recv_conn.close()
 
-imu = Imu()
-imu.header.frame_id = "body"
-img = Image()
-img.header.frame_id = "body"
-img.is_bigendian = 0
-img.encoding = "mono8"
+    rclpy.init()
+    node = rclpy.create_node('openmv')
+    imu_pub = node.create_publisher(Imu, "imu", 400)
+    t_offset_pub = node.create_publisher(Int64, "pico_pi_t_offset", QoSProfile(depth=1, reliability=QoSReliabilityPolicy.BEST_EFFORT))  # I use pico in the beginning
 
-# The on-cam script above, stored as a string (or read from a file).
-SCRIPT = open("frame_streamer_on_cam.py").read()
+    imu = Imu()
+    imu.header.frame_id = "body"
 
-with Camera("/dev/ttyACM0", ack=False, crc=False) as cam, open("img_ts.csv", "w") as img_log, open("imu_ts.csv", "w") as imu_log:
-# with Camera("/dev/ttyACM0", ack=False, crc=False) as cam, open("openmv_ae3_acc_gyro.csv", "w") as log:
-    print(cam.system_info())
-    # Stop running script (if any)
-    cam.stop()
-    time.sleep(0.5)
-    cam.exec(SCRIPT)
-    cam.streaming(False)
-    print("ok")
-#    img_i = 0
-    frame_ch_id = None
-    cnt = 0
-    prv_imu_us = 0
-    imu_us_sum = 0
-    # imu_sample_cnt = 0
-    img_us = 0
-    next_stdout_ns = 0  # read_stdout() costs a round trip; poll it at 1 Hz
+    # The on-cam script above, stored as a string (or read from a file).
+    SCRIPT = open("frame_streamer_on_cam.py").read()
 
-    try:
-        while True:
-            if (now_ns := time.monotonic_ns()) >= next_stdout_ns:
-                next_stdout_ns = now_ns + 1_000_000_000
-                if text := cam.read_stdout():
-                    print("cam:", text)
-            status = cam.read_status()
-            if status.get("imu"):
-                data = cam.channel_read("imu")
-                # print(len(data))
-                imu_samples = list(struct.iter_unpack("<hhhhhhI", data))
-                # print(len(imu_samples))
-                for gx, gy, gz, ax, ay, az, imu_us in imu_samples:
-                    if prv_imu_us > 0:
-                        diff_us = imu_us - prv_imu_us
-                        imu_us_sum += diff_us
-                        # imu_sample_cnt += 1
-                        # if imu_sample_cnt > 600:
-                        #    print("avg imu intl", imu_us_sum // imu_sample_cnt)
-                        #    imu_us_sum = 0
-                        #    imu_sample_cnt = 0
-                        if diff_us > 4800 or diff_us < 4600:
-                            print("imu ts gap", imu_us - prv_imu_us)
-                    prv_imu_us = imu_us
-                    imu.header.stamp.sec = imu_us // 1_000_000
-                    imu.header.stamp.nanosec = (imu_us % 1_000_000) * 1000
-                    imu.linear_acceleration.x = (ax * ACC_TO_MSS - acc_offset[0]) * acc_scale[0]
-                    imu.linear_acceleration.y = (ay * ACC_TO_MSS - acc_offset[1]) * acc_scale[1]
-                    imu.linear_acceleration.z = (az * ACC_TO_MSS - acc_offset[2]) * acc_scale[2]
-                    imu.angular_velocity.x = gx * GYRO_TO_RPS
-                    imu.angular_velocity.y = gy * GYRO_TO_RPS
-                    imu.angular_velocity.z = gz * GYRO_TO_RPS
-                    imu_pub.publish(imu)
+    with Camera("/dev/ttyACM0", ack=False, crc=False) as cam, open("img_ts.csv", "w") as img_log, open("imu_ts.csv", "w") as imu_log:
+    # with Camera("/dev/ttyACM0", ack=False, crc=False) as cam, open("openmv_ae3_acc_gyro.csv", "w") as log:
+        print(cam.system_info())
+        # Stop running script (if any)
+        cam.stop()
+        time.sleep(0.5)
+        cam.exec(SCRIPT)
+        cam.streaming(False)
+        print("ok")
+    #    img_i = 0
+        frame_ch_id = None
+        cnt = 0
+        prv_imu_us = 0
+        imu_us_sum = 0
+        # imu_sample_cnt = 0
+        img_us = 0
+        next_stdout_ns = 0  # read_stdout() costs a round trip; poll it at 1 Hz
 
-                    # log.write(f"{imu_us},{imu.linear_acceleration.x:.10f},{imu.linear_acceleration.y:.10f},{imu.linear_acceleration.z:.10f},{imu_us},{imu.angular_velocity.x:.10f},{imu.angular_velocity.y:.10f},{imu.angular_velocity.z:.10f}\n")
-                    imu_log.write(f"{imu_us}\n")
+        try:
+            while True:
+                if (now_ns := time.monotonic_ns()) >= next_stdout_ns:
+                    next_stdout_ns = now_ns + 1_000_000_000
+                    if text := cam.read_stdout():
+                        print("cam:", text)
+                status = cam.read_status()
+                if status.get("imu"):
+                    data = cam.channel_read("imu")
+                    # print(len(data))
+                    imu_samples = list(struct.iter_unpack("<hhhhhhI", data))
+                    # print(len(imu_samples))
+                    for gx, gy, gz, ax, ay, az, imu_us in imu_samples:
+                        if prv_imu_us > 0:
+                            diff_us = imu_us - prv_imu_us
+                            imu_us_sum += diff_us
+                            # imu_sample_cnt += 1
+                            # if imu_sample_cnt > 600:
+                            #    print("avg imu intl", imu_us_sum // imu_sample_cnt)
+                            #    imu_us_sum = 0
+                            #    imu_sample_cnt = 0
+                            if diff_us > 4800 or diff_us < 4600:
+                                print("imu ts gap", imu_us - prv_imu_us)
+                        prv_imu_us = imu_us
+                        imu.header.stamp.sec = imu_us // 1_000_000
+                        imu.header.stamp.nanosec = (imu_us % 1_000_000) * 1000
+                        imu.linear_acceleration.x = (ax * ACC_TO_MSS - acc_offset[0]) * acc_scale[0]
+                        imu.linear_acceleration.y = (ay * ACC_TO_MSS - acc_offset[1]) * acc_scale[1]
+                        imu.linear_acceleration.z = (az * ACC_TO_MSS - acc_offset[2]) * acc_scale[2]
+                        imu.angular_velocity.x = gx * GYRO_TO_RPS
+                        imu.angular_velocity.y = gy * GYRO_TO_RPS
+                        imu.angular_velocity.z = gz * GYRO_TO_RPS
+                        imu_pub.publish(imu)
 
-            if status.get("frame"):
-                if frame_ch_id is None:
-                    frame_ch_id = cam.get_channel(name="frame")
-                h, w, img_us, cam_us = cam._channel_shape(frame_ch_id)
-                cnt += 1
-                if cnt > 50:
-                    cnt = 0
-                    t_off = Int64()
-                    t_off.data = cam_us * 1000 - time.monotonic_ns()
-                    t_offset_pub.publish(t_off)
+                        # log.write(f"{imu_us},{imu.linear_acceleration.x:.10f},{imu.linear_acceleration.y:.10f},{imu.linear_acceleration.z:.10f},{imu_us},{imu.angular_velocity.x:.10f},{imu.angular_velocity.y:.10f},{imu.angular_velocity.z:.10f}\n")
+                        imu_log.write(f"{imu_us}\n")
 
-                data = cam.channel_read("frame")
+                if status.get("frame"):
+                    if frame_ch_id is None:
+                        frame_ch_id = cam.get_channel(name="frame")
+                    h, w, img_us, cam_us = cam._channel_shape(frame_ch_id)
+                    cnt += 1
+                    if cnt > 50:
+                        cnt = 0
+                        t_off = Int64()
+                        t_off.data = cam_us * 1000 - time.monotonic_ns()
+                        t_offset_pub.publish(t_off)
 
-    #            cv_img = np.frombuffer(data, np.uint8).reshape(h, w)
-    #            cv2.imshow("OpenMV", cv_img)
-    #            k = cv2.waitKey(1)
-    #            if k == ord("q"):
-    #                break
-    #            elif k == ord("s"):
-    #                cv2.imwrite(f"openmv_{img_i}.png", cv_img)
-    #                img_i += 1
+                    data = cam.channel_read("frame")
 
-                img.header.stamp.sec = img_us // 1000000
-                img.header.stamp.nanosec = (img_us % 1000000) * 1000
-                img.width = w
-                img.height = h
-                img.step = w
-                img.data = data
-                img_pub.publish(img)
+        #            cv_img = np.frombuffer(data, np.uint8).reshape(h, w)
+        #            cv2.imshow("OpenMV", cv_img)
+        #            k = cv2.waitKey(1)
+        #            if k == ord("q"):
+        #                break
+        #            elif k == ord("s"):
+        #                cv2.imwrite(f"openmv_{img_i}.png", cv_img)
+        #                img_i += 1
 
-                img_log.write(f"{img_us}\n")
+                    send_conn.send(img_us)
+                    send_conn.send_bytes(data)
 
-    except KeyboardInterrupt:
-        cam.reset()
+                    img_log.write(f"{img_us}\n")
 
-#    cv2.destroyAllWindows()
+        except KeyboardInterrupt:
+            cam.reset()
 
-print("bye")
+    #    cv2.destroyAllWindows()
+
+    send_conn.close()
+    proc.join()
+
+    print("bye")
+
+if __name__ == "__main__":
+    mp.set_start_method("forkserver")
+    main()
