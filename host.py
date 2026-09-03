@@ -53,11 +53,14 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam, open("img_ts.csv", "w"
     imu_us_sum = 0
     # imu_sample_cnt = 0
     img_us = 0
+    next_stdout_ns = 0  # read_stdout() costs a round trip; poll it at 1 Hz
 
     try:
         while True:
-            if text := cam.read_stdout():
-                print("cam:", text)
+            if (now_ns := time.monotonic_ns()) >= next_stdout_ns:
+                next_stdout_ns = now_ns + 1_000_000_000
+                if text := cam.read_stdout():
+                    print("cam:", text)
             status = cam.read_status()
             if status.get("imu"):
                 data = cam.channel_read("imu")
@@ -96,9 +99,8 @@ with Camera("/dev/ttyACM0", ack=False, crc=False) as cam, open("img_ts.csv", "w"
                 cnt += 1
                 if cnt > 50:
                     cnt = 0
-                    now_ns = time.monotonic_ns()
                     t_off = Int64()
-                    t_off.data = cam_us * 1000 - now_ns
+                    t_off.data = cam_us * 1000 - time.monotonic_ns()
                     t_offset_pub.publish(t_off)
 
                 data = cam.channel_read("frame")
