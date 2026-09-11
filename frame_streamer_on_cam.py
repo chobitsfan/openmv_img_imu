@@ -19,8 +19,8 @@ img_mv = memoryview(img)
 frame_ready = False
 img_us = 0
 imu_ready = False
-buf_a = bytearray(480)
-buf_b = bytearray(480)
+buf_a = bytearray(512)
+buf_b = bytearray(512)
 mv_fill = memoryview(buf_a)
 mv_xfer = memoryview(buf_b)
 fill_sz = 0
@@ -71,7 +71,7 @@ def task_callback(src_addr, data):
     if fill_sz <= len(mv_fill) - 16:
         mv_fill[fill_sz:fill_sz+16] = data
         fill_sz += 16
-    if fill_sz >= 80 and not imu_ready:
+    if fill_sz >= 48 and not imu_ready:
         mv_fill, mv_xfer = mv_xfer, mv_fill
         xfer_sz = fill_sz
         fill_sz = 0
@@ -137,7 +137,7 @@ def main():
 
     while True:
         now_us = refclk.now_us()
-        if trig_us and now_us >= trig_us and not frame_ready:
+        if trig_us and now_us + 50 >= trig_us and not frame_ready:
             trig_us = 0
             try:
                 img = csi0.snapshot()
