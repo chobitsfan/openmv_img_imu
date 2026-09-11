@@ -9,11 +9,11 @@ from micropython import const
 
 csi0 = csi.CSI()
 csi0.reset()
+csi0.ioctl(csi.IOCTL_SET_TRIGGERED_MODE, True)
 csi0.pixformat(csi.GRAYSCALE)
 csi0.framesize(csi.VGA)
-csi0.ioctl(csi.IOCTL_SET_TRIGGERED_MODE, True)
 # Kwabena: There’s no frame rate in triggered mode; the frame rate is how fast you can trigger. The framerate() option itself does, though, set an upper limit
-# csi0.framerate(50)
+csi0.framerate(50)
 img = csi0.snapshot()
 img_mv = memoryview(img)
 frame_ready = False
@@ -32,7 +32,7 @@ ts0_us = 0
 n_est = 0
 exposure_us = 0
 EST_WIN = const(256)  # intervals to average for imu_intl_us (~1.2s @ 215Hz)
-FRAME_INTL = const(7)
+FRAME_INTL = const(10)
 
 
 class FrameChannel:
@@ -137,7 +137,7 @@ def main():
 
     while True:
         now_us = refclk.now_us()
-        if trig_us and now_us >= trig_us:
+        if trig_us and now_us >= trig_us and not frame_ready:
             trig_us = 0
             try:
                 img = csi0.snapshot()
