@@ -137,8 +137,10 @@ def main():
 
     while True:
         now_us = refclk.now_us()
-        if trig_us and now_us >= trig_us and not frame_ready:
+        if trig_us and now_us >= trig_us:
             trig_us = 0
+            if frame_ready:
+                continue
             try:
                 img = csi0.snapshot()
             except RuntimeError:
