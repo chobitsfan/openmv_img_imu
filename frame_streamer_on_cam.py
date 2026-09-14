@@ -12,11 +12,17 @@ csi0.reset()
 csi0.ioctl(csi.IOCTL_SET_TRIGGERED_MODE, True)
 csi0.pixformat(csi.GRAYSCALE)
 csi0.framesize(csi.VGA)
+# Must come after framesize()/pixformat(): both reset the count to auto. With 3
+# buffers a captured frame is not overwritten until the 3rd capture after it, so
+# the host can read one while the sensor writes the next.
+csi0.framebuffers(3)
 # Kwabena: There’s no frame rate in triggered mode; the frame rate is how fast you can trigger. The framerate() option itself does, though, set an upper limit
 csi0.framerate(50)
 img = csi0.snapshot()
-img_mv = memoryview(img)
-frame_ready = False
+FRAME_SZ = img.size()
+print("framebuffers", csi0.framebuffers(), "frame_sz", FRAME_SZ)
+frame_ready = 0
+n_drop = 0
 img_us = 0
 imu_ready = False
 buf_a = bytearray(480)
@@ -36,19 +42,26 @@ FRAME_INTL = const(10)
 
 
 class FrameChannel:
+    def __init__(self):
+        self.sel_mv = None
+
     def size(self):
-        return len(img_mv)
+        return FRAME_SZ
 
     def shape(self):
+        self.sel_mv = memoryview(img)   # pin the pixels this stamp belongs to
         return (img.height(), img.width(), img_us, refclk.now_us())
 
     def poll(self):
-        return frame_ready
+        return bool(frame_ready)
 
     def readp(self, offset, size):
+        return self.sel_mv
+
+    def read_done(self):
         global frame_ready
-        frame_ready = False
-        return img_mv
+        self.sel_mv = None
+        frame_ready = 0
 
 
 class ImuChannel:
@@ -127,7 +140,7 @@ async def task1(ept):
 
 
 def main():
-    global img, img_us, img_mv, frame_ready, trig_us
+    global img, img_us, frame_ready, n_drop, trig_us
     refclk.enable()
     rproc = openamp.RemoteProc(0x80320000)
     rproc.start()
@@ -137,16 +150,16 @@ def main():
 
     while True:
         now_us = refclk.now_us()
-        if trig_us and now_us >= trig_us and not frame_ready:
+        if trig_us and now_us >= trig_us:
             trig_us = 0
             try:
                 img = csi0.snapshot()
             except RuntimeError:
                 print("snapshot failed")
                 continue
-            img_mv = memoryview(img)
             img_us = now_us + exposure_us // 2
-            frame_ready = True
+            n_drop += frame_ready   # previous frame was never read
+            frame_ready = 1
 
 
 if __name__ == '__main__':
