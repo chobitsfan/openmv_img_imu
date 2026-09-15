@@ -19,8 +19,8 @@ img_mv = memoryview(img)
 frame_ready = False
 img_us = 0
 imu_ready = False
-buf_a = bytearray(480)
-buf_b = bytearray(480)
+buf_a = bytearray(512)
+buf_b = bytearray(512)
 mv_fill = memoryview(buf_a)
 mv_xfer = memoryview(buf_b)
 fill_sz = 0
@@ -30,17 +30,19 @@ imu_intl_us = 0
 trig_us = 0
 ts0_us = 0
 n_est = 0
-exposure_us = 0
 EST_WIN = const(256)  # intervals to average for imu_intl_us (~1.2s @ 215Hz)
 FRAME_INTL = const(10)
+FRAME_SZ = img.size()
+FRAME_H = img.height()
+FRAME_W = img.width()
 
 
 class FrameChannel:
     def size(self):
-        return len(img_mv)
+        return FRAME_SZ
 
     def shape(self):
-        return (img.height(), img.width(), img_us, refclk.now_us())
+        return (FRAME_H, FRAME_W, img_us, refclk.now_us())
 
     def poll(self):
         return frame_ready
@@ -67,7 +69,7 @@ class ImuChannel:
 
 
 def task_callback(src_addr, data):
-    global mv_fill, mv_xfer, imu_ready, fill_sz, xfer_sz, cnt, imu_intl_us, trig_us, ts0_us, n_est, exposure_us
+    global mv_fill, mv_xfer, imu_ready, fill_sz, xfer_sz, cnt, imu_intl_us, trig_us, ts0_us, n_est
     if fill_sz <= len(mv_fill) - 16:
         mv_fill[fill_sz:fill_sz+16] = data
         fill_sz += 16
@@ -93,8 +95,7 @@ def task_callback(src_addr, data):
         if imu_intl_us:
             kf_us = struct.unpack_from("<I", data, 12)[0]
             # Kwabena: AEC will update its internal settings based on what is seen in that image unless you force manual control
-            exposure_us = csi0.exposure_us()
-            trig_us = kf_us + FRAME_INTL * imu_intl_us - exposure_us // 2
+            trig_us = kf_us + FRAME_INTL * imu_intl_us - csi0.exposure_us() // 2
 
 
 @openamp.async_remote(task_callback)
@@ -132,15 +133,20 @@ def main():
     rproc = openamp.RemoteProc(0x80320000)
     rproc.start()
 
-    protocol.register(name="frame", backend=FrameChannel())
-    protocol.register(name="imu", backend=ImuChannel())
+    frame_ch = protocol.register(name="frame", backend=FrameChannel())
+    imu_ch = protocol.register(name="imu", backend=ImuChannel())
+
+    skip_cnt = 0
 
     while True:
         now_us = refclk.now_us()
         if trig_us and now_us >= trig_us:
             trig_us = 0
             if frame_ready:
+                skip_cnt += 1
+                print("snapshot skipped", skip_cnt)
                 continue
+            exposure_us = csi0.exposure_us()
             try:
                 img = csi0.snapshot()
             except RuntimeError:

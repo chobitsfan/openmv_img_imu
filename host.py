@@ -66,15 +66,14 @@ def main():
         imu_us_sum = 0
         # imu_sample_cnt = 0
         img_us = 0
-        next_stdout_ns = 0  # read_stdout() costs a round trip; poll it at 1 Hz
 
         try:
             while True:
-                if (now_ns := time.monotonic_ns()) >= next_stdout_ns:
-                    next_stdout_ns = now_ns + 1_000_000_000
-                    if text := cam.read_stdout():
-                        print("cam:", text)
                 status = cam.read_status()
+
+                if status.get("stdout"):
+                    print("cam:", cam.read_stdout())
+
                 if status.get("imu"):
                     data = cam.channel_read("imu")
                     # print(len(data))
@@ -116,7 +115,7 @@ def main():
                         t_off.data = cam_us * 1000 - time.monotonic_ns()
                         t_offset_pub.publish(t_off)
 
-                    data = cam.channel_read("frame")
+                    data = cam.channel_read("frame", h * w)
 
         #            cv_img = np.frombuffer(data, np.uint8).reshape(h, w)
         #            cv2.imshow("OpenMV", cv_img)
