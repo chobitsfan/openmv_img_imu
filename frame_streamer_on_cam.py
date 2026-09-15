@@ -7,35 +7,6 @@ import struct
 from micropython import const
 # import time
 
-csi0 = csi.CSI()
-csi0.reset()
-csi0.ioctl(csi.IOCTL_SET_TRIGGERED_MODE, True)
-csi0.pixformat(csi.GRAYSCALE)
-csi0.framesize(csi.VGA)
-# Kwabena: There’s no frame rate in triggered mode; the frame rate is how fast you can trigger. The framerate() option itself does, though, set an upper limit
-csi0.framerate(50)
-img = csi0.snapshot()
-img_mv = memoryview(img)
-frame_ready = False
-img_us = 0
-imu_ready = False
-buf_a = bytearray(512)
-buf_b = bytearray(512)
-mv_fill = memoryview(buf_a)
-mv_xfer = memoryview(buf_b)
-fill_sz = 0
-xfer_sz = 0
-cnt = 0
-imu_intl_us = 0
-trig_us = 0
-ts0_us = 0
-n_est = 0
-EST_WIN = const(256)  # intervals to average for imu_intl_us (~1.2s @ 215Hz)
-FRAME_INTL = const(10)
-FRAME_SZ = img.size()
-FRAME_H = img.height()
-FRAME_W = img.width()
-
 
 class FrameChannel:
     def size(self):
@@ -127,8 +98,38 @@ async def task1(ept):
             ept.send(buf)
 
 
+csi0 = csi.CSI()
+csi0.reset()
+csi0.ioctl(csi.IOCTL_SET_TRIGGERED_MODE, True)
+csi0.pixformat(csi.GRAYSCALE)
+csi0.framesize(csi.VGA)
+# Kwabena: There’s no frame rate in triggered mode; the frame rate is how fast you can trigger. The framerate() option itself does, though, set an upper limit
+csi0.framerate(50)
+img = csi0.snapshot()
+img_mv = memoryview(img)
+frame_ready = False
+img_us = 0
+imu_ready = False
+buf_a = bytearray(512)
+buf_b = bytearray(512)
+mv_fill = memoryview(buf_a)
+mv_xfer = memoryview(buf_b)
+fill_sz = 0
+xfer_sz = 0
+cnt = 0
+imu_intl_us = 0
+trig_us = 0
+ts0_us = 0
+n_est = 0
+EST_WIN = const(256)  # intervals to average for imu_intl_us (~1.2s @ 215Hz)
+FRAME_INTL = const(10)
+FRAME_SZ = img.size()
+FRAME_H = img.height()
+FRAME_W = img.width()
+
+
 def main():
-    global img, img_us, img_mv, frame_ready, trig_us
+    global img, img_us, img_mv, frame_ready
     refclk.enable()
     rproc = openamp.RemoteProc(0x80320000)
     rproc.start()
@@ -137,11 +138,13 @@ def main():
     imu_ch = protocol.register(name="imu", backend=ImuChannel())
 
     skip_cnt = 0
+    last_trig = 0  # only task_callback writes trig_us; avoids clobbering a new trigger
 
     while True:
         now_us = refclk.now_us()
-        if trig_us and now_us >= trig_us:
-            trig_us = 0
+        t = trig_us
+        if t and t != last_trig and now_us >= t:
+            last_trig = t
             if frame_ready:
                 skip_cnt += 1
                 print("snapshot skipped", skip_cnt)
