@@ -5,6 +5,7 @@ import refclk
 import machine
 import struct
 from micropython import const
+from machine import Pin
 # import time
 
 
@@ -98,6 +99,10 @@ async def task1(ept):
             ept.send(buf)
 
 
+def board_reboot(pin):
+    machine.reset()
+
+
 csi0 = csi.CSI()
 csi0.reset()
 csi0.ioctl(csi.IOCTL_SET_TRIGGERED_MODE, True)
@@ -105,6 +110,7 @@ csi0.pixformat(csi.GRAYSCALE)
 csi0.framesize(csi.VGA)
 # Kwabena: There’s no frame rate in triggered mode; the frame rate is how fast you can trigger. The framerate() option itself does, though, set an upper limit
 csi0.framerate(50)
+Pin("SW", Pin.IN).irq(board_reboot, Pin.IRQ_RISING, hard = True)
 img = csi0.snapshot()
 img_mv = memoryview(img)
 frame_ready = False
