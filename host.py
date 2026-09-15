@@ -108,14 +108,15 @@ def main():
                     if frame_ch_id is None:
                         frame_ch_id = cam.get_channel(name="frame")
                     h, w, img_us, cam_us = cam._channel_shape(frame_ch_id)
+                    now_ns = time.monotonic_ns()
+                    data = cam.channel_read("frame", h * w)
+
                     cnt += 1
                     if cnt > 50:
                         cnt = 0
                         t_off = Int64()
-                        t_off.data = cam_us * 1000 - time.monotonic_ns()
+                        t_off.data = cam_us * 1000 - now_ns
                         t_offset_pub.publish(t_off)
-
-                    data = cam.channel_read("frame", h * w)
 
         #            cv_img = np.frombuffer(data, np.uint8).reshape(h, w)
         #            cv2.imshow("OpenMV", cv_img)
