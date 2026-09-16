@@ -27,29 +27,25 @@ class FrameChannel:
 
 class ImuChannel:
     def size(self):
-        return xfer_sz
+        return 80
 
     def poll(self):
-        return imu_ready
+        # readp() always hands out 80 bytes, so only advertise a full chunk
+        return (imu_wh - imu_rh) % 480 >= 80
 
     def readp(self, offset, size):
-        return mv_xfer[:xfer_sz]
-
-    def read_done(self):
-        global imu_ready
-        imu_ready = False
+        global imu_rh
+        rh_t = imu_rh
+        imu_rh = (imu_rh + 80)  % 480
+        return imu_buf_mv[rh_t:rh_t+80]
 
 
 def task_callback(src_addr, data):
-    global mv_fill, mv_xfer, imu_ready, fill_sz, xfer_sz, cnt, imu_intl_us, trig_us, ts0_us, n_est
-    if fill_sz <= len(mv_fill) - 16:
-        mv_fill[fill_sz:fill_sz+16] = data
-        fill_sz += 16
-    if fill_sz >= 80 and not imu_ready:
-        mv_fill, mv_xfer = mv_xfer, mv_fill
-        xfer_sz = fill_sz
-        fill_sz = 0
-        imu_ready = True
+    global imu_wh, cnt, imu_intl_us, trig_us, ts0_us, n_est
+
+    imu_buf_mv[imu_wh:imu_wh+16] = data
+    imu_wh = (imu_wh + 16) % 480
+
     # Average the IMU interval over a wide window (once) so the 10-interval
     # prediction lands on the true keyframe instead of ~65us early.
     if imu_intl_us == 0:
@@ -147,13 +143,10 @@ img = csi0.snapshot()
 img_mv = memoryview(img)
 frame_ready = False
 img_us = 0
-imu_ready = False
-buf_a = bytearray(512)
-buf_b = bytearray(512)
-mv_fill = memoryview(buf_a)
-mv_xfer = memoryview(buf_b)
-fill_sz = 0
-xfer_sz = 0
+imu_buf = bytearray(480)
+imu_buf_mv = memoryview(imu_buf)
+imu_rh = 0
+imu_wh = 0
 cnt = 0
 imu_intl_us = 0
 trig_us = 0

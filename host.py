@@ -75,7 +75,7 @@ def main():
                     print("cam:", cam.read_stdout())
 
                 if status.get("imu"):
-                    data = cam.channel_read("imu")
+                    data = cam.channel_read("imu", 80)
                     # print(len(data))
                     imu_samples = list(struct.iter_unpack("<hhhhhhI", data))
                     # print(len(imu_samples))
