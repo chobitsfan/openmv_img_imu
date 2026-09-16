@@ -103,37 +103,6 @@ def board_reboot(pin):
     machine.reset()
 
 
-csi0 = csi.CSI()
-csi0.reset()
-csi0.ioctl(csi.IOCTL_SET_TRIGGERED_MODE, True)
-csi0.pixformat(csi.GRAYSCALE)
-csi0.framesize(csi.VGA)
-# Kwabena: There’s no frame rate in triggered mode; the frame rate is how fast you can trigger. The framerate() option itself does, though, set an upper limit
-csi0.framerate(50)
-Pin("SW", Pin.IN).irq(board_reboot, Pin.IRQ_RISING, hard = True)
-img = csi0.snapshot()
-img_mv = memoryview(img)
-frame_ready = False
-img_us = 0
-imu_ready = False
-buf_a = bytearray(512)
-buf_b = bytearray(512)
-mv_fill = memoryview(buf_a)
-mv_xfer = memoryview(buf_b)
-fill_sz = 0
-xfer_sz = 0
-cnt = 0
-imu_intl_us = 0
-trig_us = 0
-ts0_us = 0
-n_est = 0
-EST_WIN = const(256)  # intervals to average for imu_intl_us (~1.2s @ 215Hz)
-FRAME_INTL = const(10)
-FRAME_SZ = img.size()
-FRAME_H = img.height()
-FRAME_W = img.width()
-
-
 def main():
     global img, img_us, img_mv, frame_ready
     refclk.enable()
@@ -165,6 +134,36 @@ def main():
             img_us = now_us + exposure_us // 2
             frame_ready = True
 
+
+csi0 = csi.CSI()
+csi0.reset()
+csi0.ioctl(csi.IOCTL_SET_TRIGGERED_MODE, True)
+csi0.pixformat(csi.GRAYSCALE)
+csi0.framesize(csi.VGA)
+# Kwabena: There’s no frame rate in triggered mode; the frame rate is how fast you can trigger. The framerate() option itself does, though, set an upper limit
+csi0.framerate(100)
+Pin("SW", Pin.IN).irq(board_reboot, Pin.IRQ_RISING, hard = True)
+img = csi0.snapshot()
+img_mv = memoryview(img)
+frame_ready = False
+img_us = 0
+imu_ready = False
+buf_a = bytearray(512)
+buf_b = bytearray(512)
+mv_fill = memoryview(buf_a)
+mv_xfer = memoryview(buf_b)
+fill_sz = 0
+xfer_sz = 0
+cnt = 0
+imu_intl_us = 0
+trig_us = 0
+ts0_us = 0
+n_est = 0
+EST_WIN = const(256)  # intervals to average for imu_intl_us (~1.2s @ 215Hz)
+FRAME_INTL = const(10)
+FRAME_SZ = img.size()
+FRAME_H = img.height()
+FRAME_W = img.width()
 
 if __name__ == '__main__':
     main()
