@@ -41,10 +41,17 @@ class ImuChannel:
 
 
 def task_callback(src_addr, data):
-    global imu_wh, cnt, imu_intl_us, trig_us, ts0_us, n_est
+    global imu_wh, cnt, imu_intl_us, trig_us, ts0_us, n_est, imu_ovf
 
     imu_buf_mv[imu_wh:imu_wh+16] = data
     imu_wh = (imu_wh + 16) % 480
+    if imu_wh == imu_rh:
+        # write head lapped the read head: the ring now looks empty to poll()
+        if not imu_ovf:
+            imu_ovf = True
+            print("imu ring overflow")
+    else:
+        imu_ovf = False
 
     # Average the IMU interval over a wide window (once) so the 10-interval
     # prediction lands on the true keyframe instead of ~65us early.
@@ -147,6 +154,7 @@ imu_buf = bytearray(480)
 imu_buf_mv = memoryview(imu_buf)
 imu_rh = 0
 imu_wh = 0
+imu_ovf = False
 cnt = 0
 imu_intl_us = 0
 trig_us = 0
