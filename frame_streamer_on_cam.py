@@ -31,12 +31,12 @@ class ImuChannel:
 
     def poll(self):
         # readp() always hands out 80 bytes, so only advertise a full chunk
-        return (imu_wh - imu_rh) % 480 >= 80
+        return (imu_wh - imu_rh) % IMU_BUF_SZ >= 80
 
     def readp(self, offset, size):
         global imu_rh
         rh_t = imu_rh
-        imu_rh = (imu_rh + 80)  % 480
+        imu_rh = (imu_rh + 80)  % IMU_BUF_SZ
         return imu_buf_mv[rh_t:rh_t+80]
 
 
@@ -44,7 +44,7 @@ def task_callback(src_addr, data):
     global imu_wh, cnt, imu_intl_us, trig_us, ts0_us, n_est, imu_ovf
 
     imu_buf_mv[imu_wh:imu_wh+16] = data
-    imu_wh = (imu_wh + 16) % 480
+    imu_wh = (imu_wh + 16) % IMU_BUF_SZ
     if imu_wh == imu_rh:
         # write head lapped the read head: the ring now looks empty to poll()
         if not imu_ovf:
@@ -150,7 +150,8 @@ img = csi0.snapshot()
 img_mv = memoryview(img)
 frame_ready = False
 img_us = 0
-imu_buf = bytearray(480)
+IMU_BUF_SZ = const(480)
+imu_buf = bytearray(IMU_BUF_SZ)
 imu_buf_mv = memoryview(imu_buf)
 imu_rh = 0
 imu_wh = 0
