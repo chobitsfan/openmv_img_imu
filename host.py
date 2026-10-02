@@ -50,7 +50,8 @@ def main():
     # The on-cam script above, stored as a string (or read from a file).
     SCRIPT = open("frame_streamer_on_cam.py").read()
 
-    with Camera("/dev/ttyACM0", ack=False, crc=False) as cam, open("img_ts.csv", "w") as img_log, open("imu_ts.csv", "w") as imu_log:
+    with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
+    # with Camera("/dev/ttyACM0", ack=False, crc=False) as cam, open("img_ts.csv", "w") as img_log, open("imu_ts.csv", "w") as imu_log:
     # with Camera("/dev/ttyACM0", ack=False, crc=False) as cam, open("openmv_ae3_acc_gyro.csv", "w") as log:
         print(cam.system_info())
         # Stop running script (if any)
@@ -102,7 +103,7 @@ def main():
                         imu_pub.publish(imu)
 
                         # log.write(f"{imu_us},{imu.linear_acceleration.x:.10f},{imu.linear_acceleration.y:.10f},{imu.linear_acceleration.z:.10f},{imu_us},{imu.angular_velocity.x:.10f},{imu.angular_velocity.y:.10f},{imu.angular_velocity.z:.10f}\n")
-                        imu_log.write(f"{imu_us}\n")
+                        # imu_log.write(f"{imu_us}\n")
 
                 if status.get("frame"):
                     if frame_ch_id is None:
@@ -142,7 +143,7 @@ def main():
                         n_collide += 1  # child mid-copy; drop. Frames lost while the
                         # child is stalled are overwritten instead, and counted there.
 
-                    img_log.write(f"{img_us}\n")
+                    # img_log.write(f"{img_us}\n")
 
         except KeyboardInterrupt:
             cam.reset()
