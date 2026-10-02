@@ -27,17 +27,17 @@ class FrameChannel:
 
 class ImuChannel:
     def size(self):
-        return 80
+        return IMU_CHUNK_SZ
 
     def poll(self):
-        # readp() always hands out 80 bytes, so only advertise a full chunk
-        return (imu_wh - imu_rh) % IMU_BUF_SZ >= 80
+        # readp() always hands out IMU_CHUNK_SZ bytes, so only advertise a full chunk
+        return (imu_wh - imu_rh) % IMU_BUF_SZ >= IMU_CHUNK_SZ
 
     def readp(self, offset, size):
         global imu_rh
         rh_t = imu_rh
-        imu_rh = (imu_rh + 80)  % IMU_BUF_SZ
-        return imu_buf_mv[rh_t:rh_t+80]
+        imu_rh = (imu_rh + IMU_CHUNK_SZ)  % IMU_BUF_SZ
+        return imu_buf_mv[rh_t:rh_t + IMU_CHUNK_SZ]
 
 
 def task_callback(src_addr, data):
@@ -150,7 +150,8 @@ img = csi0.snapshot()
 img_mv = memoryview(img)
 frame_ready = False
 img_us = 0
-IMU_BUF_SZ = const(480)
+IMU_CHUNK_SZ = const(64)
+IMU_BUF_SZ = const(512)
 imu_buf = bytearray(IMU_BUF_SZ)
 imu_buf_mv = memoryview(imu_buf)
 imu_rh = 0

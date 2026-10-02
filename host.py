@@ -16,6 +16,7 @@ from std_msgs.msg import Int64
 
 ACC_TO_MSS = 0.244 * 9.80665 / 1000  # +/-8 g -> 0.244 mg/LSB
 GYRO_TO_RPS = 70 * math.pi / 180 / 1000  # 2000 dps -> 70 mdps/LSB
+IMU_CHUNK_SZ = 64
 
 def main():
     if len(sys.argv) <= 1:
@@ -76,7 +77,7 @@ def main():
                     print("cam:", cam.read_stdout())
 
                 if status.get("imu"):
-                    data = cam.channel_read("imu", 80)
+                    data = cam.channel_read("imu", IMU_CHUNK_SZ)
                     # print(len(data))
                     imu_samples = list(struct.iter_unpack("<hhhhhhI", data))
                     # print(len(imu_samples))
