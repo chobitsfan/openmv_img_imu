@@ -1,2 +1,3 @@
-taskset -c 0 python host.py acc_cali_3.csv
-taskset -c 1,2,3 ./scripts/monoVIO_openmv_ae3.bash
+It require an openmv ae3 with modified firmware https://github.com/chobitsfan/openmv/tree/kimera-vio
+python host.py acc_cali.csv
+use taskset to arrange kimera-vio or other heavy job to different cpu core
