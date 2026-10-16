@@ -51,7 +51,7 @@ def main():
     # The on-cam script above, stored as a string (or read from a file).
     SCRIPT = open("frame_streamer_on_cam.py").read()
 
-    with Camera("/dev/ttyACM0", ack=False, crc=False, seq=False) as cam:
+    with Camera("/dev/ttyACM0", ack=False, crc=False) as cam:
     # with Camera("/dev/ttyACM0", ack=False, crc=False) as cam, open("img_ts.csv", "w") as img_log, open("imu_ts.csv", "w") as imu_log:
     # with Camera("/dev/ttyACM0", ack=False, crc=False) as cam, open("openmv_ae3_acc_gyro.csv", "w") as log:
         print(cam.system_info())
