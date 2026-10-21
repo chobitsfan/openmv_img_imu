@@ -20,11 +20,13 @@ IMU_CHUNK_SZ = 64
 
 def main():
     if len(sys.argv) <= 1:
-        print("need acc cali file")
-        sys.exit()
-    with open(sys.argv[1], 'r') as f:
-        acc_offset = tuple(float(x) for x in f.readline().split(','))
-        acc_scale = tuple(float(x) for x in f.readline().split(','))
+        print("No acc cali file supplied, assuming zero offset and identity scale")
+        acc_offset = (0, 0, 0)
+        acc_scale = (1, 1, 1)
+    else:
+        with open(sys.argv[1], 'r') as f:
+            acc_offset = tuple(float(x) for x in f.readline().split(','))
+            acc_scale = tuple(float(x) for x in f.readline().split(','))
 
     # Single-slot shared-memory handoff: the read loop must never block on the
     # publisher, so a frame arriving while the child is still copying is dropped.
